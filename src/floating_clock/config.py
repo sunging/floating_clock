@@ -1,17 +1,28 @@
-"""配置数据类与持久化（基于 QSettings，无额外依赖）。"""
+"""配置数据类与持久化（基于 QSettings 的 INI 文件，保存在当前目录）。"""
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QSettings
 
 from floating_clock.alarm import Alarm
 
-ORG = "floating_clock"
-APP = "floating_clock"
+# 配置文件保存在程序运行时的当前工作目录下。
+CONFIG_FILENAME = "config.ini"
+
+
+def config_path() -> Path:
+    """返回配置文件的绝对路径（当前工作目录下的 config.ini）。"""
+    return Path.cwd() / CONFIG_FILENAME
+
+
+def _settings() -> QSettings:
+    """以 INI 文件格式打开当前目录下的配置，避免写入注册表。"""
+    return QSettings(str(config_path()), QSettings.IniFormat)
 
 
 @dataclass
@@ -32,7 +43,7 @@ class Config:
     # ---- 持久化 ----
     @classmethod
     def load(cls) -> "Config":
-        s = QSettings(ORG, APP)
+        s = _settings()
         cfg = cls()
         cfg.font_size = int(s.value("font_size", cfg.font_size))
         cfg.opacity = float(s.value("opacity", cfg.opacity))
@@ -55,7 +66,7 @@ class Config:
         return cfg
 
     def save(self) -> None:
-        s = QSettings(ORG, APP)
+        s = _settings()
         s.setValue("font_size", int(self.font_size))
         s.setValue("opacity", float(self.opacity))
         s.setValue("color", str(self.color))

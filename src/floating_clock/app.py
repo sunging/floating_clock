@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
+from floating_clock import autostart
 from floating_clock.alarm import Alarm, AlarmManager
 from floating_clock.clock_window import ClockWindow
 from floating_clock.config import Config
@@ -18,6 +19,10 @@ class FloatingClockApp:
     def __init__(self, app: QApplication):
         self.app = app
         self.config = Config.load()
+
+        # 若已开启自启动，刷新注册表命令（解释器/路径可能已变动）。
+        if self.config.start_on_boot and autostart.is_supported():
+            autostart.set_enabled(True)
 
         self.clock = ClockWindow(self.config, on_clicked=self._on_clock_clicked)
         self.clock.show()
@@ -78,6 +83,10 @@ class FloatingClockApp:
         dlg = SettingsDialog(self.config)
         if dlg.exec() == SettingsDialog.Accepted:
             self.config = dlg.result_config()
+            # 应用开机自启动到注册表，并以实际结果回写配置。
+            self.config.start_on_boot = autostart.set_enabled(
+                self.config.start_on_boot
+            )
             self.config.save()
             self.clock.apply_config(self.config)
             self.alarm_manager.set_alarms(self.config.alarms)

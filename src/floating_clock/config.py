@@ -24,6 +24,7 @@ class Config:
     show_seconds: bool = True
     show_date: bool = False
     click_through: bool = True     # 默认鼠标穿透，不影响下层窗口
+    start_on_boot: bool = False    # 开机自启动
     pos_x: Optional[int] = None    # None 表示首次启动时居中/默认位置
     pos_y: Optional[int] = None
     alarms: list[Alarm] = field(default_factory=list)
@@ -39,6 +40,7 @@ class Config:
         cfg.show_seconds = _to_bool(s.value("show_seconds", cfg.show_seconds))
         cfg.show_date = _to_bool(s.value("show_date", cfg.show_date))
         cfg.click_through = _to_bool(s.value("click_through", cfg.click_through))
+        cfg.start_on_boot = _to_bool(s.value("start_on_boot", cfg.start_on_boot))
 
         px = s.value("pos_x", None)
         py = s.value("pos_y", None)
@@ -60,6 +62,7 @@ class Config:
         s.setValue("show_seconds", bool(self.show_seconds))
         s.setValue("show_date", bool(self.show_date))
         s.setValue("click_through", bool(self.click_through))
+        s.setValue("start_on_boot", bool(self.start_on_boot))
         s.setValue("pos_x", "" if self.pos_x is None else int(self.pos_x))
         s.setValue("pos_y", "" if self.pos_y is None else int(self.pos_y))
         s.setValue("alarms", json.dumps([a.to_dict() for a in self.alarms]))

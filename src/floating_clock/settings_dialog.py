@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from floating_clock import autostart
 from floating_clock.alarm import Alarm
 from floating_clock.config import Config
 
@@ -91,6 +92,16 @@ class SettingsDialog(QDialog):
         self._click_through_chk = QCheckBox("鼠标穿透（不影响下层窗口）")
         self._click_through_chk.setChecked(self._config.click_through)
         form.addRow(self._click_through_chk)
+
+        self._boot_chk = QCheckBox("开机自启动")
+        # Windows 上以注册表实际状态为准，避免与外部改动不一致。
+        if autostart.is_supported():
+            self._boot_chk.setChecked(autostart.is_enabled())
+        else:
+            self._boot_chk.setChecked(self._config.start_on_boot)
+            self._boot_chk.setEnabled(False)
+            self._boot_chk.setToolTip("仅 Windows 支持开机自启动")
+        form.addRow(self._boot_chk)
 
         return group
 
@@ -209,6 +220,7 @@ class SettingsDialog(QDialog):
         cfg.show_seconds = self._seconds_chk.isChecked()
         cfg.show_date = self._date_chk.isChecked()
         cfg.click_through = self._click_through_chk.isChecked()
+        cfg.start_on_boot = self._boot_chk.isChecked()
 
         alarms: list[Alarm] = []
         for i in range(self._alarm_list.count()):

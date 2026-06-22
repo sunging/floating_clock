@@ -219,3 +219,6 @@ __marimo__/
 
 # Floating clock 运行时配置（保存在当前目录）
 config.ini
+
+# JetBrains IDE
+.idea/

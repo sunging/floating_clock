@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTime
 from PySide6.QtGui import QColor
@@ -35,11 +36,17 @@ from floating_clock.config import Config
 class SettingsDialog(QDialog):
     """编辑 Config 的副本；接受后由调用方应用并保存。"""
 
-    def __init__(self, config: Config, parent=None):
+    def __init__(
+        self,
+        config: Config,
+        parent=None,
+        on_preview: Optional[Callable[[Config], None]] = None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("浮动时钟 — 设置")
         self._config = copy.deepcopy(config)
         self._selected_color = self._config.color
+        self._on_preview = on_preview
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._build_appearance_group())
@@ -60,6 +67,7 @@ class SettingsDialog(QDialog):
         self._font_spin = QSpinBox()
         self._font_spin.setRange(8, 400)
         self._font_spin.setValue(self._config.font_size)
+        self._font_spin.valueChanged.connect(self._emit_preview)
         form.addRow("字号", self._font_spin)
 
         self._opacity_slider = QSlider(Qt.Horizontal)
@@ -69,6 +77,7 @@ class SettingsDialog(QDialog):
         self._opacity_slider.valueChanged.connect(
             lambda v: self._opacity_label.setText(f"{v}%")
         )
+        self._opacity_slider.valueChanged.connect(self._emit_preview)
         opacity_row = QHBoxLayout()
         opacity_row.addWidget(self._opacity_slider)
         opacity_row.addWidget(self._opacity_label)
@@ -83,10 +92,12 @@ class SettingsDialog(QDialog):
 
         self._seconds_chk = QCheckBox("显示秒")
         self._seconds_chk.setChecked(self._config.show_seconds)
+        self._seconds_chk.toggled.connect(self._emit_preview)
         form.addRow(self._seconds_chk)
 
         self._date_chk = QCheckBox("显示日期")
         self._date_chk.setChecked(self._config.show_date)
+        self._date_chk.toggled.connect(self._emit_preview)
         form.addRow(self._date_chk)
 
         self._click_through_chk = QCheckBox("鼠标穿透（不影响下层窗口）")
@@ -118,6 +129,22 @@ class SettingsDialog(QDialog):
         if color.isValid():
             self._selected_color = color.name()
             self._update_color_btn()
+            self._emit_preview()
+
+    # ---- 实时预览 ----
+    def _current_preview(self) -> Config:
+        """根据当前控件值构造预览配置，保留位置/穿透/闹钟等不变。"""
+        cfg = copy.deepcopy(self._config)
+        cfg.font_size = self._font_spin.value()
+        cfg.opacity = self._opacity_slider.value() / 100.0
+        cfg.color = self._selected_color
+        cfg.show_seconds = self._seconds_chk.isChecked()
+        cfg.show_date = self._date_chk.isChecked()
+        return cfg
+
+    def _emit_preview(self) -> None:
+        if self._on_preview is not None:
+            self._on_preview(self._current_preview())
 
     # ---- 闹钟 ----
     def _build_alarm_group(self) -> QGroupBox:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import sys
 
 from PySide6.QtCore import Qt, QTimer
@@ -24,7 +25,11 @@ class FloatingClockApp:
         if self.config.start_on_boot and autostart.is_supported():
             autostart.set_enabled(True)
 
-        self.clock = ClockWindow(self.config, on_clicked=self._on_clock_clicked)
+        self.clock = ClockWindow(
+            self.config,
+            on_clicked=self._on_clock_clicked,
+            on_moved=self._on_clock_moved,
+        )
         self.clock.show()
 
         self.alarm_manager = AlarmManager(on_trigger=self._on_alarm)
@@ -55,6 +60,11 @@ class FloatingClockApp:
         self._lock_action.toggled.connect(self._toggle_click_through)
         menu.addAction(self._lock_action)
 
+        self._move_action = QAction("移动时钟", menu)
+        self._move_action.setCheckable(True)
+        self._move_action.toggled.connect(self._toggle_move_mode)
+        menu.addAction(self._move_action)
+
         menu.addSeparator()
         self._stop_action = menu.addAction("停止闹钟")
         self._stop_action.setEnabled(False)
@@ -80,7 +90,9 @@ class FloatingClockApp:
 
     # ---- 设置 ----
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self.config)
+        # 记录原配置，便于「取消」时回滚实时预览的改动。
+        original = copy.deepcopy(self.config)
+        dlg = SettingsDialog(self.config, on_preview=self._preview_config)
         if dlg.exec() == SettingsDialog.Accepted:
             self.config = dlg.result_config()
             # 应用开机自启动到注册表，并以实际结果回写配置。
@@ -91,11 +103,41 @@ class FloatingClockApp:
             self.clock.apply_config(self.config)
             self.alarm_manager.set_alarms(self.config.alarms)
             self._lock_action.setChecked(self.config.click_through)
+        else:
+            # 取消：还原预览前的外观。
+            self.config = original
+            self.clock.apply_config(self.config)
+
+    def _preview_config(self, cfg: Config) -> None:
+        """实时预览：把外观改动立即应用到时钟（不落盘）。"""
+        self.clock.apply_config(cfg)
 
     def _toggle_click_through(self, enabled: bool) -> None:
         self.config.click_through = enabled
         self.clock.set_click_through(enabled)
         self.config.save()
+
+    # ---- 移动模式 ----
+    def _toggle_move_mode(self, enabled: bool) -> None:
+        if enabled:
+            # 临时关闭穿透并显示边框提示，便于拖动。
+            self.clock.set_click_through(False)
+            self.clock.set_move_hint(True)
+            self.tray.showMessage(
+                "移动时钟",
+                "按住时钟拖到目标位置，松手后自动恢复穿透。",
+                _make_icon(),
+                4000,
+            )
+        else:
+            # 退出移动模式：去掉提示并恢复用户原来的穿透设置。
+            self.clock.set_move_hint(False)
+            self.clock.set_click_through(self.config.click_through)
+
+    def _on_clock_moved(self) -> None:
+        # 拖动结束后自动退出移动模式（toggled 信号会恢复穿透）。
+        if self._move_action.isChecked():
+            self._move_action.setChecked(False)
 
     # ---- 闹钟 ----
     def _on_alarm(self, alarm: Alarm) -> None:

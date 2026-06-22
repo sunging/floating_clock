@@ -21,11 +21,19 @@ _WS_EX_TRANSPARENT = 0x00000020
 class ClockWindow(QWidget):
     """无边框、置顶、半透明的时钟窗口。"""
 
-    def __init__(self, config: Config, on_clicked: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        config: Config,
+        on_clicked: Optional[Callable[[], None]] = None,
+        on_moved: Optional[Callable[[], None]] = None,
+    ):
         super().__init__()
         self.config = config
         self._on_clicked = on_clicked
+        self._on_moved = on_moved
         self._drag_offset = None
+        self._dragged = False
+        self._move_hint = False
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -66,9 +74,16 @@ class ClockWindow(QWidget):
         self.set_click_through(config.click_through)
 
     def _apply_color(self, color: str) -> None:
+        border = "border: 2px dashed #2D6CDF;" if self._move_hint else ""
         self._label.setStyleSheet(
-            f"color: {color}; background: transparent;"
+            f"color: {color}; background: transparent; {border}"
         )
+
+    def set_move_hint(self, on: bool) -> None:
+        """显示/隐藏「可拖动」的虚线边框提示。"""
+        self._move_hint = on
+        self._apply_color(self.config.color)
+        self._fit()
 
     def _fit(self) -> None:
         self._label.adjustSize()
@@ -139,6 +154,7 @@ class ClockWindow(QWidget):
             self._drag_offset = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             )
+            self._dragged = False
             if self._on_clicked is not None:
                 self._on_clicked()
             event.accept()
@@ -146,6 +162,7 @@ class ClockWindow(QWidget):
     def mouseMoveEvent(self, event):
         if self._drag_offset is not None and event.buttons() & Qt.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_offset)
+            self._dragged = True
             event.accept()
 
     def mouseReleaseEvent(self, event):
@@ -154,4 +171,8 @@ class ClockWindow(QWidget):
             self.config.pos_x, self.config.pos_y = pos.x(), pos.y()
             self.config.save()
             self._drag_offset = None
+            # 实际拖动过才通知（纯点击不触发退出移动模式）。
+            if self._dragged and self._on_moved is not None:
+                self._on_moved()
+            self._dragged = False
             event.accept()

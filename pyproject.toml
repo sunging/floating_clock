@@ -1,0 +1,19 @@
+[project]
+name = "floating-clock"
+version = "0.1.0"
+description = "Windows 桌面浮动时钟：大小/透明度可调、鼠标穿透、可设闹钟"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "pyside6>=6.6",
+]
+
+[project.scripts]
+floating-clock = "floating_clock.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/floating_clock"]

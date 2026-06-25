@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QGuiApplication
 from PySide6.QtWidgets import QLabel, QWidget
 
 from floating_clock.config import Config
@@ -76,6 +76,7 @@ class ClockWindow(QWidget):
 
         if config.pos_x is not None and config.pos_y is not None:
             self.move(config.pos_x, config.pos_y)
+        self._clamp_to_screen()
 
         self.set_click_through(config.click_through)
 
@@ -113,6 +114,33 @@ class ClockWindow(QWidget):
     def _fit(self) -> None:
         self._label.adjustSize()
         self.resize(self._label.size())
+        # 尺寸变化后（如闹钟弹出放大）重新约束，避免超出屏幕。
+        self._clamp_to_screen()
+
+    # ---- 屏幕边界约束 ----
+    def _current_screen(self):
+        """返回窗口当前所在屏幕，退化到主屏幕。"""
+        screen = self.screen()
+        if screen is None:
+            screen = QGuiApplication.screenAt(self.frameGeometry().center())
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        return screen
+
+    def _clamp_to_screen(self) -> None:
+        """把窗口移动到当前屏幕可用区域内，防止超出边界。"""
+        screen = self._current_screen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        x, y = self.x(), self.y()
+        # 窗口可能比屏幕还大，此时贴左上角即可。
+        max_x = max(area.left(), area.left() + area.width() - self.width())
+        max_y = max(area.top(), area.top() + area.height() - self.height())
+        new_x = min(max(x, area.left()), max_x)
+        new_y = min(max(y, area.top()), max_y)
+        if (new_x, new_y) != (x, y):
+            self.move(new_x, new_y)
 
     # ---- 时间显示 ----
     def update_time(self) -> None:
@@ -182,6 +210,9 @@ class ClockWindow(QWidget):
         self._alarm_content = ""
         self._apply_font(self.config.font_size)
         self._apply_label_style(self.config.color)
+        # 弹出放大时可能被移动过，缩回后恢复用户设定的位置。
+        if self.config.pos_x is not None and self.config.pos_y is not None:
+            self.move(self.config.pos_x, self.config.pos_y)
         self.update_time()
 
     def _toggle_flash(self) -> None:
@@ -234,6 +265,7 @@ class ClockWindow(QWidget):
     def mouseMoveEvent(self, event):
         if self._drag_offset is not None and event.buttons() & Qt.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_offset)
+            self._clamp_to_screen()  # 拖动时也限制在屏幕内
             self._dragged = True
             event.accept()
 

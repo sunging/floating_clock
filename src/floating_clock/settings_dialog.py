@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QTime
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
-    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -328,11 +327,22 @@ class SettingsDialog(QDialog):
         dlg.setWindowTitle("编辑闹钟")
         form = QFormLayout(dlg)
 
-        time_edit = QTimeEdit()
-        time_edit.setDisplayFormat("HH:mm")
         h, m = _parse_hhmm(alarm.time)
-        time_edit.setTime(QTime(h, m))
-        form.addRow("时间", time_edit)
+        hour_combo = QComboBox()
+        hour_combo.addItems([f"{i:02d}" for i in range(24)])
+        hour_combo.setCurrentIndex(h)
+        minute_combo = QComboBox()
+        minute_combo.addItems([f"{i:02d}" for i in range(60)])
+        minute_combo.setCurrentIndex(m)
+        # 下拉滚轮式时间选择：点击即可选小时/分钟，触控友好。
+        time_row = QHBoxLayout()
+        time_row.addWidget(hour_combo)
+        time_row.addWidget(QLabel(":"))
+        time_row.addWidget(minute_combo)
+        time_row.addStretch(1)
+        time_w = QWidget()
+        time_w.setLayout(time_row)
+        form.addRow("时间", time_w)
 
         label_edit = QLineEdit(alarm.label)
         form.addRow("名称", label_edit)
@@ -396,7 +406,7 @@ class SettingsDialog(QDialog):
         if dlg.exec() != QDialog.Accepted:
             return None
 
-        alarm.time = time_edit.time().toString("HH:mm")
+        alarm.time = f"{hour_combo.currentIndex():02d}:{minute_combo.currentIndex():02d}"
         alarm.label = label_edit.text().strip() or "闹钟"
         alarm.content = content_edit.toPlainText().strip()
         alarm.repeat_type = repeat_combo.currentData()

@@ -51,7 +51,12 @@ class ClockWindow(QWidget):
         self._flash_timer.setInterval(450)
         self._flash_timer.timeout.connect(self._toggle_flash)
         self._flash_on = False
-        self._flash_text: Optional[str] = None
+        self._alarm_active = False
+        self._alarm_title = ""
+        self._alarm_content = ""
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.timeout.connect(self.stop_flashing)
 
         self.apply_config(config)
         self.update_time()
@@ -60,12 +65,13 @@ class ClockWindow(QWidget):
     def apply_config(self, config: Config) -> None:
         """把配置应用到窗口（字号、颜色、透明度、穿透、位置）。"""
         self.config = config
-        font = QFont("Segoe UI", config.font_size)
-        font.setBold(True)
-        self._label.setFont(font)
-        self._apply_color(config.color)
+        self._apply_font(config.font_size)
+        self._apply_label_style(config.color)
         self.setWindowOpacity(config.opacity)
-        self.update_time()
+        if self._alarm_active:
+            self._render_alarm_popup()
+        else:
+            self.update_time()
         self._fit()
 
         if config.pos_x is not None and config.pos_y is not None:
@@ -74,10 +80,29 @@ class ClockWindow(QWidget):
         self.set_click_through(config.click_through)
 
     def _apply_color(self, color: str) -> None:
+        self._apply_label_style(color)
+
+    def _apply_label_style(
+        self,
+        color: str,
+        background_color: Optional[str] = None,
+        background_opacity: float = 0.0,
+    ) -> None:
         border = "border: 2px dashed #2D6CDF;" if self._move_hint else ""
+        background = "background: transparent;"
+        padding = ""
+        if background_color and background_opacity > 0:
+            rgba = _rgba(background_color, background_opacity)
+            background = f"background-color: {rgba};"
+            padding = "padding: 8px 14px;"
         self._label.setStyleSheet(
-            f"color: {color}; background: transparent; {border}"
+            f"color: {color}; {background} {padding} {border}"
         )
+
+    def _apply_font(self, size: int) -> None:
+        font = QFont("Segoe UI", max(8, int(size)))
+        font.setBold(True)
+        self._label.setFont(font)
 
     def set_move_hint(self, on: bool) -> None:
         """显示/隐藏「可拖动」的虚线边框提示。"""
@@ -91,7 +116,7 @@ class ClockWindow(QWidget):
 
     # ---- 时间显示 ----
     def update_time(self) -> None:
-        if self._flash_timer.isActive():
+        if self._alarm_active:
             return  # 闪烁期间由 _toggle_flash 控制文字
         self._label.setText(self._format_now())
         self._fit()
@@ -126,27 +151,74 @@ class ClockWindow(QWidget):
             pass
 
     # ---- 闪烁提醒 ----
-    def start_flashing(self, label: Optional[str] = None) -> None:
-        self._flash_text = label
+    def start_flashing(
+        self,
+        label: Optional[str] = None,
+        content: Optional[str] = None,
+    ) -> None:
+        self._preview_timer.stop()
+        self._alarm_active = True
+        self._alarm_title = label or "闹钟"
+        self._alarm_content = content or ""
         self._flash_on = False
-        self._flash_timer.start()
-        self._toggle_flash()
+        if self.config.alarm_popup_flash_enabled:
+            self._flash_timer.start()
+            self._toggle_flash()
+        else:
+            self._flash_timer.stop()
+            self._flash_on = True
+            self._render_alarm_popup()
+
+    def preview_alarm(self, label: str = "闹钟预览", content: str = "") -> None:
+        """临时展示闹钟弹出效果，不播放声音也不改变配置。"""
+        self.start_flashing(label, content)
+        self._preview_timer.start(2500)
 
     def stop_flashing(self) -> None:
+        self._preview_timer.stop()
         self._flash_timer.stop()
-        self._flash_text = None
-        self._apply_color(self.config.color)
+        self._alarm_active = False
+        self._alarm_title = ""
+        self._alarm_content = ""
+        self._apply_font(self.config.font_size)
+        self._apply_label_style(self.config.color)
         self.update_time()
 
     def _toggle_flash(self) -> None:
         self._flash_on = not self._flash_on
-        color = "#FF3030" if self._flash_on else self.config.color
-        self._apply_color(color)
-        if self._flash_text:
-            self._label.setText(self._flash_text + "\n" + self._format_now())
-        else:
-            self._label.setText(self._format_now())
+        self._render_alarm_popup()
+
+    def _render_alarm_popup(self) -> None:
+        text_color = (
+            self.config.alarm_popup_text_color
+            if self._flash_on or not self.config.alarm_popup_flash_enabled
+            else self.config.color
+        )
+        font_size = int(
+            self.config.font_size * self.config.alarm_popup_font_scale
+        )
+        self._apply_font(font_size)
+        self._apply_label_style(
+            text_color,
+            self.config.alarm_popup_background_color,
+            self.config.alarm_popup_background_opacity,
+        )
+        self._label.setText(
+            self._format_alarm_text(self._alarm_title, self._alarm_content)
+        )
         self._fit()
+
+    def _format_alarm_text(self, title: str, content: str) -> str:
+        main = title
+        if content:
+            main = f"{title}\n{content}"
+
+        layout = self.config.alarm_popup_layout
+        if layout == "label_only":
+            return main
+        if layout == "time_label":
+            return self._format_now() + "\n" + main
+        return main + "\n" + self._format_now()
 
     # ---- 拖动（仅在未穿透时有效）----
     def mousePressEvent(self, event):
@@ -176,3 +248,15 @@ class ClockWindow(QWidget):
                 self._on_moved()
             self._dragged = False
             event.accept()
+
+
+def _rgba(color: str, opacity: float) -> str:
+    """把十六进制颜色和透明度转换为 Qt 样式表可用的 rgba。"""
+    qcolor = QColor(color)
+    if not qcolor.isValid():
+        qcolor = QColor("#202020")
+    alpha = max(0, min(255, int(opacity * 255)))
+    return (
+        f"rgba({qcolor.red()}, {qcolor.green()}, "
+        f"{qcolor.blue()}, {alpha})"
+    )

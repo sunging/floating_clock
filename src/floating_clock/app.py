@@ -92,8 +92,14 @@ class FloatingClockApp:
     def _open_settings(self) -> None:
         # 记录原配置，便于「取消」时回滚实时预览的改动。
         original = copy.deepcopy(self.config)
-        dlg = SettingsDialog(self.config, on_preview=self._preview_config)
+        dlg = SettingsDialog(
+            self.config,
+            on_preview=self._preview_config,
+            on_alarm_preview=self._preview_alarm_popup,
+        )
         if dlg.exec() == SettingsDialog.Accepted:
+            if not self._ringing:
+                self.clock.stop_flashing()
             self.config = dlg.result_config()
             # 应用开机自启动到注册表，并以实际结果回写配置。
             self.config.start_on_boot = autostart.set_enabled(
@@ -105,12 +111,21 @@ class FloatingClockApp:
             self._lock_action.setChecked(self.config.click_through)
         else:
             # 取消：还原预览前的外观。
+            if not self._ringing:
+                self.clock.stop_flashing()
             self.config = original
             self.clock.apply_config(self.config)
 
     def _preview_config(self, cfg: Config) -> None:
         """实时预览：把外观改动立即应用到时钟（不落盘）。"""
         self.clock.apply_config(cfg)
+
+    def _preview_alarm_popup(self, cfg: Config) -> None:
+        """预览闹钟弹出样式，不播放提示音。"""
+        if self._ringing:
+            return
+        self.clock.apply_config(cfg)
+        self.clock.preview_alarm("闹钟预览", "这是闹钟内容预览")
 
     def _toggle_click_through(self, enabled: bool) -> None:
         self.config.click_through = enabled
@@ -149,13 +164,18 @@ class FloatingClockApp:
         self.clock.show()
         self.clock.raise_()
         self.clock.activateWindow()
-        self.clock.start_flashing(alarm.label)
+        self.clock.start_flashing(alarm.label, alarm.content)
 
         _play_sound(loop=True)
-        self.tray.showMessage("闹钟", alarm.label, _make_icon(), 10000)
+        self.tray.showMessage(
+            alarm.label,
+            alarm.content or alarm.label,
+            _make_icon(),
+            10000,
+        )
 
         # 单次闹钟触发后已被停用，保存状态。
-        if not alarm.repeat_daily:
+        if alarm.is_once():
             self.config.alarms = self.alarm_manager.alarms
             self.config.save()
 

@@ -49,9 +49,10 @@ taskbar (`setQuitOnLastWindowClosed(False)` — lifecycle is the tray icon).
   click-through is a **Win32 extended-window-style** hack (`WS_EX_TRANSPARENT`
   via `ctypes`). Dragging is gated behind click-through being off; a real drag
   fires the `on_moved` callback used to auto-exit "move mode".
-- **`alarm.py` — `Alarm` / `AlarmManager`** match alarms by `HH:MM` with a
-  per-minute dedup key (the 500 ms tick would otherwise fire repeatedly).
-  One-shot alarms (`repeat_daily=False`) disable themselves on fire.
+- **`alarm.py` — `Alarm` / `AlarmManager`** match alarms by `HH:MM` plus repeat
+  rule (`once` / `daily` / `weekdays` / `custom`) with a per-minute dedup key
+  (the 500 ms tick would otherwise fire repeatedly). One-shot alarms
+  (`repeat_type="once"`) disable themselves on fire.
 - **`autostart.py`** registers/unregisters under the current-user `Run`
   registry key. The launch command differs between a frozen PyInstaller exe
   (`sys.frozen`) and script mode (`pythonw.exe -m floating_clock`).

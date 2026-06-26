@@ -62,8 +62,13 @@ class SettingsDialog(QDialog):
         self._on_alarm_preview = on_alarm_preview
 
         layout = QVBoxLayout(self)
-        layout.addWidget(self._build_appearance_group())
-        layout.addWidget(self._build_alarm_popup_group())
+
+        # 顶部两列：左侧外观，右侧闹钟弹出样式，缩短整体高度并拓宽布局。
+        top_row = QHBoxLayout()
+        top_row.addWidget(self._build_appearance_group(), 0, Qt.AlignTop)
+        top_row.addWidget(self._build_alarm_popup_group(), 0, Qt.AlignTop)
+        layout.addLayout(top_row)
+
         layout.addWidget(self._build_alarm_group())
 
         buttons = QDialogButtonBox(

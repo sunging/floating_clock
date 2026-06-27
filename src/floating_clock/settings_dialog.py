@@ -329,6 +329,10 @@ class SettingsDialog(QDialog):
         v = QVBoxLayout(group)
 
         self._alarm_list = QListWidget()
+        # 双击列表项直接进入编辑，省去「选中 + 点编辑」两步。
+        self._alarm_list.itemDoubleClicked.connect(
+            lambda _item: self._edit_alarm()
+        )
         for alarm in self._config.alarms:
             self._add_alarm_item(alarm)
         v.addWidget(self._alarm_list)

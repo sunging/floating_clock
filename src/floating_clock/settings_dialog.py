@@ -56,6 +56,8 @@ class SettingsDialog(QDialog):
         self.setWindowTitle("浮动时钟 — 设置")
         self._config = copy.deepcopy(config)
         self._selected_color = self._config.color
+        self._selected_auto_dark = self._config.auto_color_dark_bg
+        self._selected_auto_light = self._config.auto_color_light_bg
         self._selected_alarm_text_color = self._config.alarm_popup_text_color
         self._selected_alarm_bg_color = self._config.alarm_popup_background_color
         self._on_preview = on_preview
@@ -109,6 +111,25 @@ class SettingsDialog(QDialog):
         self._color_btn.clicked.connect(self._pick_color)
         form.addRow("文字颜色", self._color_btn)
 
+        self._auto_color_chk = QCheckBox("自动适配背景色")
+        self._auto_color_chk.setChecked(self._config.auto_color)
+        form.addRow(self._auto_color_chk)
+
+        self._auto_dark_btn = QPushButton()
+        _set_color_button(self._auto_dark_btn, self._selected_auto_dark)
+        self._auto_dark_btn.clicked.connect(self._pick_auto_dark_color)
+        form.addRow("深色背景用色", self._auto_dark_btn)
+
+        self._auto_light_btn = QPushButton()
+        _set_color_button(self._auto_light_btn, self._selected_auto_light)
+        self._auto_light_btn.clicked.connect(self._pick_auto_light_color)
+        form.addRow("浅色背景用色", self._auto_light_btn)
+
+        # 初始化各按钮启用状态（自动模式下手动色被覆盖）。
+        self._update_auto_color_enabled()
+        # 构建完成后再接信号，避免初始化时控件未就绪就触发预览。
+        self._auto_color_chk.toggled.connect(self._on_auto_color_toggled)
+
         self._seconds_chk = QCheckBox("显示秒")
         self._seconds_chk.setChecked(self._config.show_seconds)
         self._seconds_chk.toggled.connect(self._emit_preview)
@@ -145,6 +166,35 @@ class SettingsDialog(QDialog):
         if color.isValid():
             self._selected_color = color.name()
             self._update_color_btn()
+            self._emit_preview()
+
+    def _on_auto_color_toggled(self, _checked: bool) -> None:
+        self._update_auto_color_enabled()
+        self._emit_preview()
+
+    def _update_auto_color_enabled(self) -> None:
+        """自动模式下禁用手动文字颜色，启用浅/深背景配色按钮。"""
+        auto = self._auto_color_chk.isChecked()
+        self._color_btn.setEnabled(not auto)
+        self._auto_dark_btn.setEnabled(auto)
+        self._auto_light_btn.setEnabled(auto)
+
+    def _pick_auto_dark_color(self) -> None:
+        color = QColorDialog.getColor(
+            QColor(self._selected_auto_dark), self, "选择深色背景下的文字颜色"
+        )
+        if color.isValid():
+            self._selected_auto_dark = color.name()
+            _set_color_button(self._auto_dark_btn, self._selected_auto_dark)
+            self._emit_preview()
+
+    def _pick_auto_light_color(self) -> None:
+        color = QColorDialog.getColor(
+            QColor(self._selected_auto_light), self, "选择浅色背景下的文字颜色"
+        )
+        if color.isValid():
+            self._selected_auto_light = color.name()
+            _set_color_button(self._auto_light_btn, self._selected_auto_light)
             self._emit_preview()
 
     # ---- 闹钟弹出样式 ----
@@ -247,6 +297,9 @@ class SettingsDialog(QDialog):
         cfg.font_size = self._font_spin.value()
         cfg.opacity = self._opacity_slider.value() / 100.0
         cfg.color = self._selected_color
+        cfg.auto_color = self._auto_color_chk.isChecked()
+        cfg.auto_color_dark_bg = self._selected_auto_dark
+        cfg.auto_color_light_bg = self._selected_auto_light
         cfg.show_seconds = self._seconds_chk.isChecked()
         cfg.show_date = self._date_chk.isChecked()
         self._apply_alarm_popup_values(cfg)
@@ -429,6 +482,9 @@ class SettingsDialog(QDialog):
         cfg.font_size = self._font_spin.value()
         cfg.opacity = self._opacity_slider.value() / 100.0
         cfg.color = self._selected_color
+        cfg.auto_color = self._auto_color_chk.isChecked()
+        cfg.auto_color_dark_bg = self._selected_auto_dark
+        cfg.auto_color_light_bg = self._selected_auto_light
         cfg.show_seconds = self._seconds_chk.isChecked()
         cfg.show_date = self._date_chk.isChecked()
         cfg.click_through = self._click_through_chk.isChecked()

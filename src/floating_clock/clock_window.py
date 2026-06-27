@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
+from statistics import median
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
@@ -34,6 +35,7 @@ class ClockWindow(QWidget):
         self._drag_offset = None
         self._dragged = False
         self._move_hint = False
+        self._auto_color_value: Optional[str] = None  # 自动模式下计算出的当前文字色
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
@@ -66,7 +68,13 @@ class ClockWindow(QWidget):
         """把配置应用到窗口（字号、颜色、透明度、穿透、位置）。"""
         self.config = config
         self._apply_font(config.font_size)
-        self._apply_label_style(config.color)
+        if config.auto_color:
+            self._auto_color_value = (
+                self._compute_auto_color() or self._auto_color_value
+            )
+        else:
+            self._auto_color_value = None
+        self._apply_label_style(self._text_color())
         self.setWindowOpacity(config.opacity)
         if self._alarm_active:
             self._render_alarm_popup()
@@ -80,8 +88,67 @@ class ClockWindow(QWidget):
 
         self.set_click_through(config.click_through)
 
+    def _text_color(self) -> str:
+        """当前应使用的文字颜色：自动模式下用计算值，否则用用户设定色。"""
+        if self.config.auto_color and self._auto_color_value:
+            return self._auto_color_value
+        return self.config.color
+
     def _apply_color(self, color: str) -> None:
         self._apply_label_style(color)
+
+    # ---- 自动适配背景色 ----
+    def _sample_background_luminance(self) -> Optional[float]:
+        """抓取时钟正后方屏幕区域，返回其中位数感知亮度（0–255）。
+
+        窗口背景透明，仅字形像素是自身干扰；降采样后取中位数可稳健忽略。
+        抓屏在部分平台受限，失败时返回 None 由调用方回退到手动颜色。
+        """
+        try:
+            screen = self._current_screen()
+            if screen is None:
+                return None
+            geo = self.frameGeometry()
+            pixmap = screen.grabWindow(
+                0, geo.x(), geo.y(), geo.width(), geo.height()
+            )
+            if pixmap.isNull():
+                return None
+            image = pixmap.toImage().scaled(
+                8, 8, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+            )
+            lums = []
+            for y in range(image.height()):
+                for x in range(image.width()):
+                    c = image.pixelColor(x, y)
+                    lums.append(
+                        0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()
+                    )
+            if not lums:
+                return None
+            return median(lums)
+        except Exception:
+            # 抓屏是增强功能，失败不应让程序崩溃。
+            return None
+
+    def _compute_auto_color(self) -> Optional[str]:
+        """根据背景亮度选择浅色/深色文字；无法采样时返回 None。"""
+        lum = self._sample_background_luminance()
+        if lum is None:
+            return None
+        if lum > 140:  # 背景偏亮 → 用深色文字
+            return self.config.auto_color_light_bg
+        return self.config.auto_color_dark_bg
+
+    def update_auto_color(self) -> None:
+        """重新采样背景并在颜色变化时更新文字（供主循环/拖动后调用）。"""
+        if not self.config.auto_color or self._alarm_active:
+            return
+        new = self._compute_auto_color()
+        if new and new != self._auto_color_value:
+            self._auto_color_value = new
+            self._apply_label_style(self._text_color())
+            self._fit()
 
     def _apply_label_style(
         self,
@@ -108,7 +175,7 @@ class ClockWindow(QWidget):
     def set_move_hint(self, on: bool) -> None:
         """显示/隐藏「可拖动」的虚线边框提示。"""
         self._move_hint = on
-        self._apply_color(self.config.color)
+        self._apply_color(self._text_color())
         self._fit()
 
     def _fit(self) -> None:
@@ -209,7 +276,7 @@ class ClockWindow(QWidget):
         self._alarm_title = ""
         self._alarm_content = ""
         self._apply_font(self.config.font_size)
-        self._apply_label_style(self.config.color)
+        self._apply_label_style(self._text_color())
         # 弹出放大时可能被移动过，缩回后恢复用户设定的位置。
         if self.config.pos_x is not None and self.config.pos_y is not None:
             self.move(self.config.pos_x, self.config.pos_y)
@@ -223,7 +290,7 @@ class ClockWindow(QWidget):
         text_color = (
             self.config.alarm_popup_text_color
             if self._flash_on or not self.config.alarm_popup_flash_enabled
-            else self.config.color
+            else self._text_color()
         )
         font_size = int(
             self.config.font_size * self.config.alarm_popup_font_scale
@@ -274,6 +341,7 @@ class ClockWindow(QWidget):
             pos = self.pos()
             self.config.pos_x, self.config.pos_y = pos.x(), pos.y()
             self.config.save()
+            self.update_auto_color()  # 拖到新位置后立即按背景重算颜色
             self._drag_offset = None
             # 实际拖动过才通知（纯点击不触发退出移动模式）。
             if self._dragged and self._on_moved is not None:

@@ -32,6 +32,9 @@ class Config:
     font_size: int = 48
     opacity: float = 0.75          # 0.1–1.0，整体窗口透明度
     color: str = "#FFFFFF"         # 文字颜色（十六进制）
+    auto_color: bool = False       # 是否根据背景明暗自动调整文字颜色
+    auto_color_dark_bg: str = "#F0F0F0"   # 背景偏暗时使用的（浅色）文字
+    auto_color_light_bg: str = "#202020"  # 背景偏亮时使用的（深色）文字
     show_seconds: bool = True
     show_date: bool = False
     click_through: bool = True     # 默认鼠标穿透，不影响下层窗口
@@ -54,6 +57,13 @@ class Config:
         cfg.font_size = int(s.value("font_size", cfg.font_size))
         cfg.opacity = float(s.value("opacity", cfg.opacity))
         cfg.color = str(s.value("color", cfg.color))
+        cfg.auto_color = _to_bool(s.value("auto_color", cfg.auto_color))
+        cfg.auto_color_dark_bg = str(
+            s.value("auto_color_dark_bg", cfg.auto_color_dark_bg)
+        )
+        cfg.auto_color_light_bg = str(
+            s.value("auto_color_light_bg", cfg.auto_color_light_bg)
+        )
         cfg.show_seconds = _to_bool(s.value("show_seconds", cfg.show_seconds))
         cfg.show_date = _to_bool(s.value("show_date", cfg.show_date))
         cfg.click_through = _to_bool(s.value("click_through", cfg.click_through))
@@ -109,6 +119,9 @@ class Config:
         s.setValue("font_size", int(self.font_size))
         s.setValue("opacity", float(self.opacity))
         s.setValue("color", str(self.color))
+        s.setValue("auto_color", bool(self.auto_color))
+        s.setValue("auto_color_dark_bg", str(self.auto_color_dark_bg))
+        s.setValue("auto_color_light_bg", str(self.auto_color_light_bg))
         s.setValue("show_seconds", bool(self.show_seconds))
         s.setValue("show_date", bool(self.show_date))
         s.setValue("click_through", bool(self.click_through))

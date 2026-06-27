@@ -36,6 +36,7 @@ class FloatingClockApp:
         self.alarm_manager.set_alarms(self.config.alarms)
 
         self._ringing = False
+        self._auto_color_ticks = 0  # 节流自动调色：每若干个 tick 采样一次
 
         self._build_tray()
 
@@ -87,6 +88,12 @@ class FloatingClockApp:
     def _tick(self) -> None:
         self.clock.update_time()
         self.alarm_manager.check()
+        # 抓屏开销较大，约每 2 秒（每 4 个 500ms tick）才重新采样背景色。
+        if self.config.auto_color:
+            self._auto_color_ticks += 1
+            if self._auto_color_ticks >= 4:
+                self._auto_color_ticks = 0
+                self.clock.update_auto_color()
 
     # ---- 设置 ----
     def _open_settings(self) -> None:

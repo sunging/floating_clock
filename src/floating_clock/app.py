@@ -241,7 +241,47 @@ def _play_sound(loop: bool) -> None:
         pass
 
 
+def _detach_to_background() -> bool:
+    """Windows 上把自身重启为脱离终端的后台进程，立即释放前台终端。
+
+    通过环境变量哨兵避免无限重启：已是后台子进程时直接返回 False 继续运行。
+    非 Windows 平台不处理（返回 False）。
+    """
+    import os
+
+    if sys.platform != "win32":
+        return False
+    if os.environ.get("FLOATING_CLOCK_DETACHED") == "1":
+        return False  # 已是后台子进程，正常启动
+
+    try:
+        import subprocess
+        from pathlib import Path
+
+        # 优先用 pythonw.exe，避免子进程弹出控制台窗口。
+        exe = Path(sys.executable)
+        pythonw = exe.with_name("pythonw.exe")
+        python = str(pythonw) if pythonw.exists() else sys.executable
+
+        env = dict(os.environ, FLOATING_CLOCK_DETACHED="1")
+        # DETACHED_PROCESS 切断与当前控制台的关联，CREATE_NO_WINDOW 兜底防黑框。
+        creationflags = 0x00000008 | 0x00000200 | 0x08000000
+        subprocess.Popen(
+            [python, "-m", "floating_clock", *sys.argv[1:]],
+            env=env,
+            creationflags=creationflags,
+            close_fds=True,
+        )
+        return True
+    except Exception:
+        # 后台化失败则退回前台直接运行，保证功能可用。
+        return False
+
+
 def main() -> int:
+    if _detach_to_background():
+        return 0  # 父进程立即退出，归还前台终端
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出，靠托盘控制
 

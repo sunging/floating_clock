@@ -19,8 +19,20 @@ uv run --with pyinstaller pyinstaller --noconsole --onefile `
   --name floating-clock src/floating_clock/__main__.py
 ```
 
-There is no test suite. Verify changes with a **headless smoke test** so no
-window pops up — set the offscreen Qt platform and drive the widgets directly:
+There is a **pytest** suite under `tests/`. Run it headless so no window pops
+up — set the offscreen Qt platform:
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"; uv run pytest
+```
+
+CI (`.github/workflows/tests.yml`) runs this on `windows-latest` (Python 3.9
+and 3.12) for every push to `main` and every PR. Windows is used so the
+win32-only tests (`screen.py`, `winsound`) actually run instead of being
+skipped.
+
+For changes hard to cover with a unit test, also do a **headless smoke test** —
+drive the widgets directly with the offscreen platform set:
 
 ```bash
 QT_QPA_PLATFORM=offscreen uv run python -c "from PySide6.QtWidgets import QApplication; app=QApplication([]); ..."

@@ -26,9 +26,10 @@ window pops up — set the offscreen Qt platform and drive the widgets directly:
 QT_QPA_PLATFORM=offscreen uv run python -c "from PySide6.QtWidgets import QApplication; app=QApplication([]); ..."
 ```
 
-`Config.save()` writes `config.ini` into the **current working directory**, so
-run throwaway scripts from a temp dir or delete the file afterward (it is
-gitignored).
+`Config.save()` writes `config.ini` into a `config/` folder under the **program
+directory** (`app_dir()`: the exe's folder when frozen, else the project root) —
+independent of the working directory, so autostart reads the same file. Tests
+redirect this via the `temp_config_dir` fixture; the folder is gitignored.
 
 ## Architecture
 
@@ -41,8 +42,8 @@ taskbar (`setQuitOnLastWindowClosed(False)` — lifecycle is the tray icon).
   `alarm_manager.check()`. All cross-component wiring lives here via callbacks.
 - **`config.py` — `Config`** is a dataclass holding every adjustable setting.
   `Config.load()` / `Config.save()` are the *only* persistence API; they use
-  `QSettings(IniFormat)` pointed at `config.ini` in the cwd (not the registry).
-  Alarms are stored as a JSON string inside the INI.
+  `QSettings(IniFormat)` pointed at `config/config.ini` under `app_dir()` (not
+  the registry). Alarms are stored as a JSON string inside the INI.
 - **`clock_window.py` — `ClockWindow`** is the frameless/top-most/translucent
   `QWidget` (a centered `QLabel`). `apply_config()` is the single place that
   applies appearance (font/color/opacity/position/click-through). Mouse

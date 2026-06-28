@@ -217,8 +217,8 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Floating clock 运行时配置（保存在当前目录）
-config.ini
+# Floating clock 运行时配置（保存在程序目录的 config/ 下）
+config/
 
 # JetBrains IDE
 .idea/

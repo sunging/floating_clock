@@ -1,8 +1,9 @@
-"""配置数据类与持久化（基于 QSettings 的 INI 文件，保存在当前目录）。"""
+"""配置数据类与持久化（基于 QSettings 的 INI 文件，保存在程序目录的 config 下）。"""
 
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -11,13 +12,33 @@ from PySide6.QtCore import QSettings
 
 from floating_clock.alarm import Alarm
 
-# 配置文件保存在程序运行时的当前工作目录下。
+# 配置统一放在程序所在目录的 config 子目录下，与工作目录无关，
+# 这样开机自启（工作目录通常是 System32）也能读到同一份配置。
+CONFIG_DIRNAME = "config"
 CONFIG_FILENAME = "config.ini"
 
 
+def app_dir() -> Path:
+    """返回程序所在目录。
+
+    - 打包为 exe（PyInstaller，``sys.frozen``）时为 exe 所在目录。
+    - 以源码运行时为项目根目录（``src`` 的上一级）。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
+def config_dir() -> Path:
+    """返回配置文件夹（程序目录下的 config/），不存在时创建。"""
+    directory = app_dir() / CONFIG_DIRNAME
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def config_path() -> Path:
-    """返回配置文件的绝对路径（当前工作目录下的 config.ini）。"""
-    return Path.cwd() / CONFIG_FILENAME
+    """返回配置文件的绝对路径（程序目录下 config/config.ini）。"""
+    return config_dir() / CONFIG_FILENAME
 
 
 def _settings() -> QSettings:

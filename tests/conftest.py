@@ -9,6 +9,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 import pytest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
@@ -25,12 +26,9 @@ def qapp():
 
 
 @pytest.fixture
-def temp_config_dir():
-    """切到临时目录运行，隔离 config.ini（其路径取 Path.cwd()）。"""
-    old_cwd = os.getcwd()
+def temp_config_dir(monkeypatch):
+    """把配置文件重定向到临时目录，隔离真实的 config/config.ini。"""
     with tempfile.TemporaryDirectory() as tmpdir:
-        os.chdir(tmpdir)
-        try:
-            yield tmpdir
-        finally:
-            os.chdir(old_cwd)
+        path = Path(tmpdir) / "config.ini"
+        monkeypatch.setattr("floating_clock.config.config_path", lambda: path)
+        yield tmpdir

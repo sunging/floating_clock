@@ -3,12 +3,17 @@
 import pytest
 
 from floating_clock.alarm import REPEAT_CUSTOM, REPEAT_WEEKDAYS, Alarm
+import sys
+from pathlib import Path
+
 from floating_clock.config import (
     Config,
     _clamp_float,
+    _is_installed,
     _normalize_popup_layout,
     _normalize_sound_mode,
     _to_bool,
+    _user_base_dir,
 )
 
 
@@ -35,6 +40,30 @@ def test_clamp_float():
     assert _clamp_float(-1, 0.0, 1.0, 0.75) == 0.0    # 下界裁剪
     assert _clamp_float("bad", 0.0, 1.0, 0.75) == 0.75  # 非法→default
     assert _clamp_float(None, 0.0, 1.0, 0.75) == 0.75
+
+
+def test_is_installed():
+    # site-packages / dist-packages 内视为已安装。
+    assert _is_installed(
+        Path("/x/lib/site-packages/floating_clock/config.py")
+    )
+    assert _is_installed(
+        Path("/usr/lib/python3/dist-packages/floating_clock/config.py")
+    )
+    # 源码布局不算已安装。
+    assert not _is_installed(Path("/proj/src/floating_clock/config.py"))
+
+
+def test_user_base_dir_windows(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", r"C:\Users\me\AppData\Roaming")
+    assert _user_base_dir() == Path(r"C:\Users\me\AppData\Roaming\FloatingClock")
+
+
+def test_user_base_dir_xdg(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/home/me/.config")
+    assert _user_base_dir() == Path("/home/me/.config/floating_clock")
 
 
 def test_normalize_sound_mode():

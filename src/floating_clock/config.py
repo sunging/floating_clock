@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,14 +20,38 @@ CONFIG_FILENAME = "config.ini"
 
 
 def app_dir() -> Path:
-    """返回程序所在目录。
+    """返回配置文件夹的基准目录。
 
-    - 打包为 exe（PyInstaller，``sys.frozen``）时为 exe 所在目录。
-    - 以源码运行时为项目根目录（``src`` 的上一级）。
+    - 打包为 exe（PyInstaller，``sys.frozen``）：exe 所在目录（便携模式，
+      配置随程序走）。
+    - 以 pip / ``uv tool`` 安装运行（包位于 site-packages 内）：用户级目录，
+      避免写进受管环境后被升级/重装清空。
+    - 直接以源码运行：项目根目录（``src`` 的上一级）。
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[2]
+    here = Path(__file__).resolve()
+    if _is_installed(here):
+        return _user_base_dir()
+    return here.parents[2]
+
+
+def _is_installed(path: Path) -> bool:
+    """包是否安装在 site-packages / dist-packages 内（即非源码运行）。"""
+    return any(
+        parent.name in ("site-packages", "dist-packages")
+        for parent in path.parents
+    )
+
+
+def _user_base_dir() -> Path:
+    """返回用户级配置基准目录（随平台约定）。"""
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home())
+        return Path(base) / "FloatingClock"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "floating_clock"
 
 
 def config_dir() -> Path:

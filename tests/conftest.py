@@ -1,7 +1,8 @@
-"""共享测试 fixture。
+"""Shared test fixtures.
 
-注意：在导入任何 PySide6 模块之前，必须先把 Qt 平台设为 offscreen，
-这样 CI / 无显示环境也能创建 QApplication 与构造控件。
+Note: before importing any PySide6 module, the Qt platform must be set to
+offscreen, so CI / headless environments can create a QApplication and build
+widgets.
 """
 
 import os
@@ -17,9 +18,10 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 @pytest.fixture(scope="session")
 def qapp():
-    """整个测试会话共享一个 QApplication 实例。
+    """A single QApplication instance shared by the whole test session.
 
-    Qt 进程内只能有一个 QApplication，重复创建会报错，故用 session 单例。
+    A Qt process can only have one QApplication; creating another raises, so
+    use a session singleton.
     """
     app = QApplication.instance() or QApplication([])
     yield app
@@ -27,7 +29,7 @@ def qapp():
 
 @pytest.fixture
 def temp_config_dir(monkeypatch):
-    """把配置文件重定向到临时目录，隔离真实的 config/config.ini。"""
+    """Redirect the config file to a temp dir, isolating the real config/config.ini."""
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "config.ini"
         monkeypatch.setattr("floating_clock.config.config_path", lambda: path)

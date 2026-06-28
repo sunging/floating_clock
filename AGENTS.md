@@ -79,7 +79,9 @@ taskbar (`setQuitOnLastWindowClosed(False)` — lifecycle is the tray icon).
   silently, never raise (e.g. `screen.py` always reports the display as on).
 - **When config is saved:** settings accepted, click-through toggled, drag
   released, and one-shot alarm fired. Keep these in sync when adding state.
-- **Comments and docstrings are in Chinese** to match the existing codebase.
+- **Comments and docstrings are in English.** User-facing strings (tray menu
+  labels, dialog text, default alarm names) stay in Chinese — only code comments
+  and docstrings are English.
 
 ## Commits
 

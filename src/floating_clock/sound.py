@@ -1,7 +1,8 @@
-"""提示音播放。
+"""Notification sound playback.
 
-Windows 上用内置 ``winsound`` 播放，支持三种模式：无声、系统提示音、
-自定义 WAV 文件。非 Windows 平台静默跳过（功能优雅降级）。
+On Windows it uses the built-in ``winsound`` and supports three modes: silent,
+system sound, and a custom WAV file. On non-Windows platforms it silently
+no-ops (graceful degradation).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ SOUND_SYSTEM = "system"
 SOUND_CUSTOM = "custom"
 SOUND_MODES = {SOUND_SILENT, SOUND_SYSTEM, SOUND_CUSTOM}
 
-# 可选的系统提示音：winsound SND_ALIAS 别名 -> 显示名。
+# Selectable system sounds: winsound SND_ALIAS name -> display name.
 SYSTEM_SOUNDS: list[tuple[str, str]] = [
     ("SystemHand", "错误 (Critical Stop)"),
     ("SystemAsterisk", "星号 (Asterisk)"),
@@ -28,7 +29,7 @@ DEFAULT_SYSTEM_SOUND = "SystemHand"
 
 
 def normalize_mode(value) -> str:
-    """把提示音模式规整到支持的取值，默认系统提示音。"""
+    """Coerce the sound mode to a supported value; defaults to system sound."""
     value = str(value or SOUND_SYSTEM)
     return value if value in SOUND_MODES else SOUND_SYSTEM
 
@@ -39,7 +40,7 @@ def play(
     custom_path: str = "",
     loop: bool = True,
 ) -> None:
-    """按配置播放提示音；无声模式或非 Windows 平台直接停声/跳过。"""
+    """Play the sound per config; silent mode or non-Windows just stops/skips."""
     if sys.platform != "win32":
         return
     mode = normalize_mode(mode)
@@ -58,7 +59,8 @@ def play(
             if path and Path(path).is_file():
                 winsound.PlaySound(path, winsound.SND_FILENAME | flags)
                 return
-            # 自定义文件缺失时回退到默认系统提示音，避免完全无声。
+            # Custom file missing: fall back to the default system sound
+            # instead of going completely silent.
             winsound.PlaySound(DEFAULT_SYSTEM_SOUND, winsound.SND_ALIAS | flags)
             return
 
@@ -69,7 +71,7 @@ def play(
 
 
 def stop() -> None:
-    """停止当前正在播放的提示音。"""
+    """Stop the currently playing sound."""
     if sys.platform != "win32":
         return
     try:

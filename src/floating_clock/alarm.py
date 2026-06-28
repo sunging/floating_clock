@@ -1,4 +1,4 @@
-"""闹钟数据模型与触发管理。"""
+"""Alarm data model and trigger management."""
 
 from __future__ import annotations
 
@@ -24,14 +24,14 @@ WORKDAY_INDICES = [0, 1, 2, 3, 4]
 
 @dataclass
 class Alarm:
-    """单个闹钟。
+    """A single alarm.
 
-    time: "HH:MM" 24 小时格式。
-    label: 闹钟名称。
-    content: 响铃时显示的详细内容。
-    enabled: 是否启用。
-    repeat_type: 重复类型，支持单次、每天、工作日、自定义星期。
-    repeat_weekdays: 自定义星期，0-6 表示周一到周日。
+    time: "HH:MM" in 24-hour format.
+    label: alarm name.
+    content: detailed text shown when ringing.
+    enabled: whether the alarm is active.
+    repeat_type: repeat mode — once, daily, weekdays, or custom weekdays.
+    repeat_weekdays: custom weekdays, 0-6 for Monday through Sunday.
     """
 
     time: str = "08:00"
@@ -73,7 +73,7 @@ class Alarm:
         self.repeat_weekdays = _normalize_weekdays(self.repeat_weekdays)
 
     def matches(self, now: datetime) -> bool:
-        """判断指定时间是否命中当前闹钟。"""
+        """Whether the given time hits this alarm."""
         if not self.enabled or self.time != now.strftime("%H:%M"):
             return False
 
@@ -87,28 +87,28 @@ class Alarm:
         return False
 
     def is_once(self) -> bool:
-        """是否为触发后自动停用的单次闹钟。"""
+        """Whether this is a one-shot alarm that disables itself on fire."""
         return self.repeat_type == REPEAT_ONCE
 
 
 class AlarmManager:
-    """持有闹钟列表，按分钟匹配并通过回调触发。"""
+    """Holds the alarm list, matches per minute, and fires via a callback."""
 
     def __init__(self, on_trigger: Callable[[Alarm], None]):
         self._on_trigger = on_trigger
         self.alarms: list[Alarm] = []
-        # 记录"上一次触发的分钟键"，避免同一分钟内重复触发。
+        # Track the last fired minute key to avoid re-firing within a minute.
         self._last_fired_minute: Optional[str] = None
 
     def set_alarms(self, alarms: list[Alarm]) -> None:
         self.alarms = list(alarms)
 
     def check(self, now: Optional[datetime] = None) -> None:
-        """每个 tick 调用一次；命中启用的闹钟时触发回调。"""
+        """Call once per tick; fires the callback when an enabled alarm hits."""
         now = now or datetime.now()
         minute_key = now.strftime("%Y-%m-%d %H:%M")
 
-        # 同一分钟只处理一次，防止 500ms tick 多次触发。
+        # Only handle a minute once, so the 500ms tick can't fire repeatedly.
         if minute_key == self._last_fired_minute:
             return
 
@@ -118,12 +118,12 @@ class AlarmManager:
                 if alarm.is_once():
                     alarm.enabled = False
                 self._on_trigger(alarm)
-                # 一分钟内只触发一个闹钟，避免多声叠加。
+                # Only fire one alarm per minute to avoid overlapping sounds.
                 break
 
 
 def _normalize_repeat_type(value: str) -> str:
-    """把重复类型规整到支持的取值。"""
+    """Coerce the repeat type to a supported value."""
     value = str(value or REPEAT_DAILY)
     if value in REPEAT_TYPES:
         return value
@@ -131,7 +131,7 @@ def _normalize_repeat_type(value: str) -> str:
 
 
 def _normalize_weekdays(value) -> list[int]:
-    """规整星期列表，忽略非法项并去重排序。"""
+    """Normalize the weekday list, dropping invalid items and dedup-sorting."""
     if value is None:
         return []
     days: set[int] = set()
@@ -146,7 +146,7 @@ def _normalize_weekdays(value) -> list[int]:
 
 
 def _to_bool(value) -> bool:
-    """兼容旧 JSON 里可能出现的字符串布尔值。"""
+    """Tolerate string booleans that may appear in legacy JSON."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):

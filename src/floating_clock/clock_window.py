@@ -1,4 +1,4 @@
-"""浮动时钟窗口：显示、拖动、鼠标穿透、闪烁提醒。"""
+"""Floating clock window: display, dragging, click-through, flashing reminder."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from PySide6.QtWidgets import QLabel, QWidget
 
 from floating_clock.config import Config
 
-# Win32 常量（仅 Windows 使用）
+# Win32 constants (Windows only)
 _GWL_EXSTYLE = -20
 _WS_EX_LAYERED = 0x00080000
 _WS_EX_TRANSPARENT = 0x00000020
 
 
 class ClockWindow(QWidget):
-    """无边框、置顶、半透明的时钟窗口。"""
+    """Frameless, always-on-top, translucent clock window."""
 
     def __init__(
         self,
@@ -35,12 +35,12 @@ class ClockWindow(QWidget):
         self._drag_offset = None
         self._dragged = False
         self._move_hint = False
-        self._auto_color_value: Optional[str] = None  # 自动模式下计算出的当前文字色
+        self._auto_color_value: Optional[str] = None  # current text color computed in auto mode
 
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
-            | Qt.Tool  # 不在任务栏显示
+            | Qt.Tool  # don't show in the taskbar
         )
         self.setAttribute(Qt.WA_TranslucentBackground, True)
 
@@ -48,7 +48,7 @@ class ClockWindow(QWidget):
         self._label.setAlignment(Qt.AlignCenter)
         self._label.setTextInteractionFlags(Qt.NoTextInteraction)
 
-        # 闪烁状态
+        # Flashing state
         self._flash_timer = QTimer(self)
         self._flash_timer.setInterval(450)
         self._flash_timer.timeout.connect(self._toggle_flash)
@@ -63,9 +63,9 @@ class ClockWindow(QWidget):
         self.apply_config(config)
         self.update_time()
 
-    # ---- 外观 ----
+    # ---- Appearance ----
     def apply_config(self, config: Config) -> None:
-        """把配置应用到窗口（字号、颜色、透明度、穿透、位置）。"""
+        """Apply config to the window (font, color, opacity, click-through, position)."""
         self.config = config
         self._apply_font(config.font_size)
         if config.auto_color:
@@ -89,7 +89,7 @@ class ClockWindow(QWidget):
         self.set_click_through(config.click_through)
 
     def _text_color(self) -> str:
-        """当前应使用的文字颜色：自动模式下用计算值，否则用用户设定色。"""
+        """Text color to use now: the computed value in auto mode, else the user's color."""
         if self.config.auto_color and self._auto_color_value:
             return self._auto_color_value
         return self.config.color
@@ -97,12 +97,14 @@ class ClockWindow(QWidget):
     def _apply_color(self, color: str) -> None:
         self._apply_label_style(color)
 
-    # ---- 自动适配背景色 ----
+    # ---- Auto-adapt to background color ----
     def _sample_background_luminance(self) -> Optional[float]:
-        """抓取时钟正后方屏幕区域，返回其中位数感知亮度（0–255）。
+        """Grab the screen region right behind the clock and return its median perceived luminance (0-255).
 
-        窗口背景透明，仅字形像素是自身干扰；降采样后取中位数可稳健忽略。
-        抓屏在部分平台受限，失败时返回 None 由调用方回退到手动颜色。
+        The window background is transparent, so only glyph pixels are self-noise;
+        downsampling then taking the median robustly ignores them. Screen grabs
+        are restricted on some platforms; on failure return None so the caller
+        falls back to the manual color.
         """
         try:
             screen = self._current_screen()
@@ -128,20 +130,20 @@ class ClockWindow(QWidget):
                 return None
             return median(lums)
         except Exception:
-            # 抓屏是增强功能，失败不应让程序崩溃。
+            # Screen grabbing is an enhancement; failure must not crash the app.
             return None
 
     def _compute_auto_color(self) -> Optional[str]:
-        """根据背景亮度选择浅色/深色文字；无法采样时返回 None。"""
+        """Choose light/dark text by background luminance; None when unsamplable."""
         lum = self._sample_background_luminance()
         if lum is None:
             return None
-        if lum > 140:  # 背景偏亮 → 用深色文字
+        if lum > 140:  # bright background -> use dark text
             return self.config.auto_color_light_bg
         return self.config.auto_color_dark_bg
 
     def update_auto_color(self) -> None:
-        """重新采样背景并在颜色变化时更新文字（供主循环/拖动后调用）。"""
+        """Re-sample the background and update text if the color changed (called by main loop / after drag)."""
         if not self.config.auto_color or self._alarm_active:
             return
         new = self._compute_auto_color()
@@ -173,7 +175,7 @@ class ClockWindow(QWidget):
         self._label.setFont(font)
 
     def set_move_hint(self, on: bool) -> None:
-        """显示/隐藏「可拖动」的虚线边框提示。"""
+        """Show/hide the dashed "draggable" border hint."""
         self._move_hint = on
         self._apply_color(self._text_color())
         self._fit()
@@ -181,12 +183,12 @@ class ClockWindow(QWidget):
     def _fit(self) -> None:
         self._label.adjustSize()
         self.resize(self._label.size())
-        # 尺寸变化后（如闹钟弹出放大）重新约束，避免超出屏幕。
+        # Re-clamp after a size change (e.g. the alarm popup enlarges) to stay on screen.
         self._clamp_to_screen()
 
-    # ---- 屏幕边界约束 ----
+    # ---- Screen boundary clamping ----
     def _current_screen(self):
-        """返回窗口当前所在屏幕，退化到主屏幕。"""
+        """Return the screen the window is currently on, falling back to the primary screen."""
         screen = self.screen()
         if screen is None:
             screen = QGuiApplication.screenAt(self.frameGeometry().center())
@@ -195,13 +197,13 @@ class ClockWindow(QWidget):
         return screen
 
     def _clamp_to_screen(self) -> None:
-        """把窗口移动到当前屏幕可用区域内，防止超出边界。"""
+        """Move the window into the current screen's available area to avoid overflow."""
         screen = self._current_screen()
         if screen is None:
             return
         area = screen.availableGeometry()
         x, y = self.x(), self.y()
-        # 窗口可能比屏幕还大，此时贴左上角即可。
+        # The window may be larger than the screen; in that case just pin to the top-left.
         max_x = max(area.left(), area.left() + area.width() - self.width())
         max_y = max(area.top(), area.top() + area.height() - self.height())
         new_x = min(max(x, area.left()), max_x)
@@ -209,10 +211,10 @@ class ClockWindow(QWidget):
         if (new_x, new_y) != (x, y):
             self.move(new_x, new_y)
 
-    # ---- 时间显示 ----
+    # ---- Time display ----
     def update_time(self) -> None:
         if self._alarm_active:
-            return  # 闪烁期间由 _toggle_flash 控制文字
+            return  # during flashing, _toggle_flash controls the text
         self._label.setText(self._format_now())
         self._fit()
 
@@ -224,9 +226,9 @@ class ClockWindow(QWidget):
             text = now.strftime("%Y-%m-%d") + "\n" + text
         return text
 
-    # ---- 鼠标穿透 ----
+    # ---- Click-through ----
     def set_click_through(self, enabled: bool) -> None:
-        """Windows 上通过扩展窗口样式实现鼠标穿透。"""
+        """Implement mouse click-through via the extended window style on Windows."""
         self.config.click_through = enabled
         if sys.platform != "win32":
             return
@@ -242,10 +244,10 @@ class ClockWindow(QWidget):
                 style &= ~_WS_EX_TRANSPARENT
             user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, style)
         except Exception:
-            # 穿透是增强功能，失败不应让程序崩溃。
+            # Click-through is an enhancement; failure must not crash the app.
             pass
 
-    # ---- 闪烁提醒 ----
+    # ---- Flashing reminder ----
     def start_flashing(
         self,
         label: Optional[str] = None,
@@ -265,7 +267,7 @@ class ClockWindow(QWidget):
             self._render_alarm_popup()
 
     def preview_alarm(self, label: str = "闹钟预览", content: str = "") -> None:
-        """临时展示闹钟弹出效果，不播放声音也不改变配置。"""
+        """Briefly show the alarm popup effect without playing sound or changing config."""
         self.start_flashing(label, content)
         self._preview_timer.start(2500)
 
@@ -277,7 +279,7 @@ class ClockWindow(QWidget):
         self._alarm_content = ""
         self._apply_font(self.config.font_size)
         self._apply_label_style(self._text_color())
-        # 弹出放大时可能被移动过，缩回后恢复用户设定的位置。
+        # The popup may have been moved when enlarged; restore the user's position after shrinking.
         if self.config.pos_x is not None and self.config.pos_y is not None:
             self.move(self.config.pos_x, self.config.pos_y)
         self.update_time()
@@ -318,7 +320,7 @@ class ClockWindow(QWidget):
             return self._format_now() + "\n" + main
         return main + "\n" + self._format_now()
 
-    # ---- 拖动（仅在未穿透时有效）----
+    # ---- Dragging (only when click-through is off) ----
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_offset = (
@@ -332,7 +334,7 @@ class ClockWindow(QWidget):
     def mouseMoveEvent(self, event):
         if self._drag_offset is not None and event.buttons() & Qt.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_offset)
-            self._clamp_to_screen()  # 拖动时也限制在屏幕内
+            self._clamp_to_screen()  # also clamp to screen while dragging
             self._dragged = True
             event.accept()
 
@@ -341,9 +343,9 @@ class ClockWindow(QWidget):
             pos = self.pos()
             self.config.pos_x, self.config.pos_y = pos.x(), pos.y()
             self.config.save()
-            self.update_auto_color()  # 拖到新位置后立即按背景重算颜色
+            self.update_auto_color()  # recompute color from the background at the new position
             self._drag_offset = None
-            # 实际拖动过才通知（纯点击不触发退出移动模式）。
+            # Only notify on an actual drag (a plain click won't exit move mode).
             if self._dragged and self._on_moved is not None:
                 self._on_moved()
             self._dragged = False
@@ -351,7 +353,7 @@ class ClockWindow(QWidget):
 
 
 def _rgba(color: str, opacity: float) -> str:
-    """把十六进制颜色和透明度转换为 Qt 样式表可用的 rgba。"""
+    """Convert a hex color and opacity to an rgba value usable in a Qt stylesheet."""
     qcolor = QColor(color)
     if not qcolor.isValid():
         qcolor = QColor("#202020")

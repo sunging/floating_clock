@@ -1,4 +1,4 @@
-"""screen.py 的单元测试：默认状态与 WM_POWERBROADCAST 解析。"""
+"""Unit tests for screen.py: default state and WM_POWERBROADCAST parsing."""
 
 import sys
 
@@ -8,17 +8,18 @@ from floating_clock.screen import ScreenStateMonitor
 
 
 def test_default_display_on():
-    # 启动时无法查询，默认认为屏幕点亮（宁可响铃也不漏闹钟）。
+    # The state can't be queried at startup; assume the screen is on
+    # (better to ring than to miss an alarm).
     assert ScreenStateMonitor().is_display_off() is False
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="原生消息解析仅 Windows")
+@pytest.mark.skipif(sys.platform != "win32", reason="native message parsing is Windows-only")
 @pytest.mark.parametrize(
     "state,expected_off",
     [
-        (0, True),   # 关闭
-        (1, False),  # 开启
-        (2, False),  # 变暗仍视为点亮
+        (0, True),   # off
+        (1, False),  # on
+        (2, False),  # dimmed still counts as on
     ],
 )
 def test_power_broadcast_updates_state(state, expected_off):
@@ -40,12 +41,12 @@ def test_power_broadcast_updates_state(state, expected_off):
     handled, _ = monitor.nativeEventFilter(
         b"windows_generic_MSG", ctypes.addressof(msg)
     )
-    # 过滤器不消费消息，应放行。
+    # The filter doesn't consume the message; it should pass it through.
     assert handled is False
     assert monitor.is_display_off() is expected_off
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="原生消息解析仅 Windows")
+@pytest.mark.skipif(sys.platform != "win32", reason="native message parsing is Windows-only")
 def test_unrelated_message_ignored():
     import ctypes
 
@@ -53,6 +54,6 @@ def test_unrelated_message_ignored():
 
     monitor = ScreenStateMonitor()
     msg = screen._MSG()
-    msg.message = 0x0001  # 非 WM_POWERBROADCAST
+    msg.message = 0x0001  # not WM_POWERBROADCAST
     monitor.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
     assert monitor.is_display_off() is False

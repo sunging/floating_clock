@@ -1,4 +1,4 @@
-"""sound.py 的单元测试：模式规整与跨平台静默降级。"""
+"""Unit tests for sound.py: mode normalization and cross-platform silent degradation."""
 
 import sys
 
@@ -13,9 +13,9 @@ from floating_clock import sound
         ("silent", "silent"),
         ("system", "system"),
         ("custom", "custom"),
-        ("", "system"),        # 空 → 默认
+        ("", "system"),        # empty -> default
         (None, "system"),
-        ("nonsense", "system"),  # 非法 → 默认
+        ("nonsense", "system"),  # invalid -> default
     ],
 )
 def test_normalize_mode(value, expected):
@@ -28,15 +28,15 @@ def test_system_sounds_nonempty_and_contains_default():
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="仅验证非 Windows 平台的静默降级"
+    sys.platform == "win32", reason="only verifies silent degradation on non-Windows"
 )
 def test_play_and_stop_silent_on_non_windows():
-    # 非 Windows 平台应直接返回、不抛异常。
+    # On non-Windows platforms it should just return without raising.
     sound.play("system", "SystemHand", "", loop=True)
     sound.stop()
 
 
 def test_play_silent_mode_does_not_raise():
-    # 无声模式在任意平台都不应抛异常。
+    # Silent mode must not raise on any platform.
     sound.play("silent", "SystemHand", "", loop=True)
     sound.stop()

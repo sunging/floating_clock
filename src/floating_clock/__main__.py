@@ -1,4 +1,4 @@
-"""支持 `python -m floating_clock` 启动。"""
+"""Entry point for `python -m floating_clock`."""
 
 from floating_clock.app import main
 

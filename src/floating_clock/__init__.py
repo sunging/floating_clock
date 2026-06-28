@@ -1,3 +1,3 @@
-"""Windows 桌面浮动时钟。"""
+"""Windows desktop floating clock."""
 
 __version__ = "0.1.0"

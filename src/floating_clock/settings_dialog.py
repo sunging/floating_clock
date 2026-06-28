@@ -1,4 +1,4 @@
-"""设置对话框：外观调节与闹钟管理。"""
+"""Settings dialog: appearance tuning and alarm management."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ from floating_clock.config import Config
 
 
 class SettingsDialog(QDialog):
-    """编辑 Config 的副本；接受后由调用方应用并保存。"""
+    """Edits a copy of Config; once accepted, the caller applies and saves it."""
 
     def __init__(
         self,
@@ -66,7 +66,8 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        # 顶部两列：左侧外观，右侧闹钟弹出样式，缩短整体高度并拓宽布局。
+        # Top two columns: appearance on the left, alarm popup style on the right,
+        # to shorten overall height and widen the layout.
         top_row = QHBoxLayout()
         top_row.addWidget(self._build_appearance_group(), 0, Qt.AlignTop)
         top_row.addWidget(self._build_alarm_popup_group(), 0, Qt.AlignTop)
@@ -82,7 +83,7 @@ class SettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-    # ---- 外观 ----
+    # ---- Appearance ----
     def _build_appearance_group(self) -> QGroupBox:
         group = QGroupBox("外观")
         form = QFormLayout(group)
@@ -127,9 +128,9 @@ class SettingsDialog(QDialog):
         self._auto_light_btn.clicked.connect(self._pick_auto_light_color)
         form.addRow("浅色背景用色", self._auto_light_btn)
 
-        # 初始化各按钮启用状态（自动模式下手动色被覆盖）。
+        # Initialize each button's enabled state (manual color is overridden in auto mode).
         self._update_auto_color_enabled()
-        # 构建完成后再接信号，避免初始化时控件未就绪就触发预览。
+        # Connect the signal after building, so init doesn't trigger a preview before widgets are ready.
         self._auto_color_chk.toggled.connect(self._on_auto_color_toggled)
 
         self._seconds_chk = QCheckBox("显示秒")
@@ -147,7 +148,7 @@ class SettingsDialog(QDialog):
         form.addRow(self._click_through_chk)
 
         self._boot_chk = QCheckBox("开机自启动")
-        # Windows 上以注册表实际状态为准，避免与外部改动不一致。
+        # On Windows, trust the registry's actual state to avoid drift from external changes.
         if autostart.is_supported():
             self._boot_chk.setChecked(autostart.is_enabled())
         else:
@@ -175,7 +176,7 @@ class SettingsDialog(QDialog):
         self._emit_preview()
 
     def _update_auto_color_enabled(self) -> None:
-        """自动模式下禁用手动文字颜色，启用浅/深背景配色按钮。"""
+        """In auto mode, disable the manual text color and enable the light/dark background color buttons."""
         auto = self._auto_color_chk.isChecked()
         self._color_btn.setEnabled(not auto)
         self._auto_dark_btn.setEnabled(auto)
@@ -199,7 +200,7 @@ class SettingsDialog(QDialog):
             _set_color_button(self._auto_light_btn, self._selected_auto_light)
             self._emit_preview()
 
-    # ---- 闹钟弹出样式 ----
+    # ---- Alarm popup style ----
     def _build_alarm_popup_group(self) -> QGroupBox:
         group = QGroupBox("闹钟弹出样式")
         form = QFormLayout(group)
@@ -292,9 +293,9 @@ class SettingsDialog(QDialog):
                 self._selected_alarm_bg_color,
             )
 
-    # ---- 实时预览 ----
+    # ---- Live preview ----
     def _current_preview(self) -> Config:
-        """根据当前控件值构造预览配置，保留位置/穿透/闹钟等不变。"""
+        """Build a preview config from current widget values, leaving position/click-through/alarms unchanged."""
         cfg = copy.deepcopy(self._config)
         cfg.font_size = self._font_spin.value()
         cfg.opacity = self._opacity_slider.value() / 100.0
@@ -325,7 +326,7 @@ class SettingsDialog(QDialog):
         cfg.alarm_popup_font_scale = self._alarm_font_scale_spin.value()
         cfg.alarm_popup_layout = self._alarm_layout_combo.currentData()
 
-    # ---- 提示音 ----
+    # ---- Sound ----
     def _build_sound_group(self) -> QGroupBox:
         group = QGroupBox("提示音与响铃")
         form = QFormLayout(group)
@@ -377,7 +378,7 @@ class SettingsDialog(QDialog):
         return group
 
     def _update_sound_enabled(self) -> None:
-        """根据提示音模式启用/禁用别名下拉、自定义文件与试听。"""
+        """Enable/disable the alias combo, custom file, and test button per sound mode."""
         mode = self._sound_mode_combo.currentData()
         self._sound_alias_combo.setEnabled(mode == sound.SOUND_SYSTEM)
         self._sound_path_edit.setEnabled(mode == sound.SOUND_CUSTOM)
@@ -394,7 +395,7 @@ class SettingsDialog(QDialog):
             self._sound_path_edit.setText(path)
 
     def _test_sound(self) -> None:
-        """试听当前选择的提示音（播放一次，不循环）。"""
+        """Preview the currently selected sound (play once, no loop)."""
         sound.play(
             self._sound_mode_combo.currentData(),
             self._sound_alias_combo.currentData(),
@@ -408,13 +409,13 @@ class SettingsDialog(QDialog):
         cfg.sound_custom_path = self._sound_path_edit.text().strip()
         cfg.ring_when_screen_off = self._ring_screen_off_chk.isChecked()
 
-    # ---- 闹钟 ----
+    # ---- Alarms ----
     def _build_alarm_group(self) -> QGroupBox:
         group = QGroupBox("闹钟")
         v = QVBoxLayout(group)
 
         self._alarm_list = QListWidget()
-        # 双击列表项直接进入编辑，省去「选中 + 点编辑」两步。
+        # Double-click a row to edit directly, skipping the "select + click Edit" two steps.
         self._alarm_list.itemDoubleClicked.connect(
             lambda _item: self._edit_alarm()
         )
@@ -469,7 +470,7 @@ class SettingsDialog(QDialog):
             self._alarm_list.takeItem(row)
 
     def _edit_alarm_dialog(self, alarm: Alarm):
-        """用一个小对话框编辑时间/名称/内容/重复，返回 Alarm 或 None。"""
+        """Edit time/name/content/repeat in a small dialog; return an Alarm or None."""
         dlg = QDialog(self)
         dlg.setWindowTitle("编辑闹钟")
         form = QFormLayout(dlg)
@@ -481,7 +482,7 @@ class SettingsDialog(QDialog):
         minute_combo = QComboBox()
         minute_combo.addItems([f"{i:02d}" for i in range(60)])
         minute_combo.setCurrentIndex(m)
-        # 下拉滚轮式时间选择：点击即可选小时/分钟，触控友好。
+        # Dropdown-style time picking: click to choose hour/minute, touch-friendly.
         time_row = QHBoxLayout()
         time_row.addWidget(hour_combo)
         time_row.addWidget(QLabel(":"))
@@ -564,9 +565,9 @@ class SettingsDialog(QDialog):
         alarm.__post_init__()
         return alarm
 
-    # ---- 结果 ----
+    # ---- Result ----
     def result_config(self) -> Config:
-        """从控件读取最终配置（调用方在 exec()==Accepted 后调用）。"""
+        """Read the final config from the widgets (called after exec()==Accepted)."""
         cfg = self._config
         cfg.font_size = self._font_spin.value()
         cfg.opacity = self._opacity_slider.value() / 100.0
@@ -600,13 +601,13 @@ def _parse_hhmm(value: str) -> tuple[int, int]:
 
 
 def _set_color_button(button: QPushButton, color: str) -> None:
-    """更新颜色按钮文本和色块。"""
+    """Update the color button's text and swatch."""
     button.setText(color)
     button.setStyleSheet(f"background-color: {color};")
 
 
 def _repeat_label(alarm: Alarm) -> str:
-    """返回列表里展示的重复周期文本。"""
+    """Return the repeat-period text shown in the list."""
     if alarm.repeat_type == REPEAT_ONCE:
         return "单次"
     if alarm.repeat_type == REPEAT_DAILY:

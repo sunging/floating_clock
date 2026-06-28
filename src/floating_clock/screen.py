@@ -1,8 +1,10 @@
-"""显示器电源状态监听（Windows）。
+"""Monitor power state detection (Windows).
 
-通过 ``RegisterPowerSettingNotification`` 订阅 ``GUID_CONSOLE_DISPLAY_STATE``，
-作为 Qt 原生事件过滤器解析 ``WM_POWERBROADCAST`` 消息，维护"屏幕是否点亮"。
-用于"屏幕关闭时不响铃"的判断。非 Windows 平台为无操作，始终认为屏幕点亮。
+Subscribes to ``GUID_CONSOLE_DISPLAY_STATE`` via
+``RegisterPowerSettingNotification`` and, as a Qt native event filter, parses
+``WM_POWERBROADCAST`` messages to track whether the screen is on. Used for the
+"don't ring when the screen is off" behavior. On non-Windows platforms it is a
+no-op and always reports the screen as on.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ _WM_POWERBROADCAST = 0x0218
 _PBT_POWERSETTINGCHANGE = 0x8013
 _DEVICE_NOTIFY_WINDOW_HANDLE = 0x0
 
-# 显示状态值：0=关闭，1=开启，2=变暗。
+# Display state values: 0=off, 1=on, 2=dimmed.
 _DISPLAY_OFF = 0
 
 if sys.platform == "win32":
@@ -58,11 +60,12 @@ if sys.platform == "win32":
 
 
 class ScreenStateMonitor(QAbstractNativeEventFilter):
-    """跟踪显示器电源状态；安装为应用级原生事件过滤器后调用 ``start``。"""
+    """Tracks monitor power state; call ``start`` after installing as an app-level filter."""
 
     def __init__(self) -> None:
         super().__init__()
-        # 启动时无法直接查询，默认认为屏幕点亮（宁可响铃也不漏闹钟）。
+        # The state can't be queried at startup; assume the screen is on
+        # (better to ring than to miss an alarm).
         self._display_on = True
         self._handle = None
 
@@ -70,7 +73,7 @@ class ScreenStateMonitor(QAbstractNativeEventFilter):
         return not self._display_on
 
     def start(self, hwnd: int) -> bool:
-        """为指定窗口句柄订阅显示状态通知；成功返回 True。"""
+        """Subscribe to display-state notifications for the given window handle; True on success."""
         if sys.platform != "win32" or not hwnd:
             return False
         try:
@@ -90,7 +93,7 @@ class ScreenStateMonitor(QAbstractNativeEventFilter):
         except Exception:
             return False
 
-    def nativeEventFilter(self, eventType, message):  # noqa: N802 (Qt 命名)
+    def nativeEventFilter(self, eventType, message):  # noqa: N802 (Qt naming)
         if sys.platform != "win32":
             return False, 0
         try:

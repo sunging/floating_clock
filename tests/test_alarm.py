@@ -1,4 +1,4 @@
-"""alarm.py 的单元测试（纯逻辑，无需 Qt）。"""
+"""Unit tests for alarm.py (pure logic, no Qt needed)."""
 
 from datetime import datetime
 
@@ -16,9 +16,9 @@ from floating_clock.alarm import (
     _to_bool,
 )
 
-# 固定时间锚点，避免依赖系统当前时间。
-MON_0800 = datetime(2024, 1, 1, 8, 0)   # 2024-01-01 是周一
-SAT_0800 = datetime(2024, 1, 6, 8, 0)   # 周六
+# Fixed time anchors, to avoid depending on the current system time.
+MON_0800 = datetime(2024, 1, 1, 8, 0)   # 2024-01-01 is a Monday
+SAT_0800 = datetime(2024, 1, 6, 8, 0)   # Saturday
 MON_0900 = datetime(2024, 1, 1, 9, 0)
 
 
@@ -39,12 +39,12 @@ def test_matches_disabled():
 
 def test_matches_weekdays():
     alarm = Alarm(time="08:00", repeat_type=REPEAT_WEEKDAYS)
-    assert alarm.matches(MON_0800)       # 周一命中
-    assert not alarm.matches(SAT_0800)   # 周六不命中
+    assert alarm.matches(MON_0800)       # Monday hits
+    assert not alarm.matches(SAT_0800)   # Saturday doesn't hit
 
 
 def test_matches_custom():
-    # 仅选周六(5)
+    # Only Saturday (5) selected
     alarm = Alarm(time="08:00", repeat_type=REPEAT_CUSTOM, repeat_weekdays=[5])
     assert alarm.matches(SAT_0800)
     assert not alarm.matches(MON_0800)
@@ -55,7 +55,7 @@ def test_is_once():
     assert not Alarm(repeat_type=REPEAT_DAILY).is_once()
 
 
-# ---- 序列化往返 ----
+# ---- Serialization roundtrip ----
 def test_to_from_dict_roundtrip():
     alarm = Alarm(
         time="07:30",
@@ -63,7 +63,7 @@ def test_to_from_dict_roundtrip():
         content="该起床了",
         enabled=True,
         repeat_type=REPEAT_CUSTOM,
-        repeat_weekdays=[2, 0, 0, 4],  # 会被去重排序
+        repeat_weekdays=[2, 0, 0, 4],  # will be deduped and sorted
     )
     restored = Alarm.from_dict(alarm.to_dict())
     assert restored.time == "07:30"
@@ -87,10 +87,10 @@ def test_from_dict_missing_keys_defaults():
     alarm = Alarm.from_dict({})
     assert alarm.time == "08:00"
     assert alarm.label == "闹钟"
-    assert alarm.repeat_type == REPEAT_DAILY  # 无 repeat_daily 时默认 True→DAILY
+    assert alarm.repeat_type == REPEAT_DAILY  # no repeat_daily defaults to True -> DAILY
 
 
-# ---- 规整函数 ----
+# ---- Normalization functions ----
 def test_normalize_weekdays():
     assert _normalize_weekdays([3, 1, 1, 3]) == [1, 3]
     assert _normalize_weekdays([7, -1, 2]) == [2]
@@ -129,7 +129,7 @@ def test_manager_dedup_same_minute():
     mgr = AlarmManager(on_trigger=fired.append)
     mgr.set_alarms([Alarm(time="08:00", repeat_type=REPEAT_DAILY)])
     mgr.check(MON_0800)
-    mgr.check(MON_0800)  # 同一分钟，第二次不再触发
+    mgr.check(MON_0800)  # same minute, the second call doesn't fire again
     assert len(fired) == 1
 
 
@@ -150,4 +150,4 @@ def test_manager_only_first_match_per_minute():
     mgr = AlarmManager(on_trigger=fired.append)
     mgr.set_alarms([a, b])
     mgr.check(MON_0800)
-    assert fired == [a]  # 同一分钟只触发第一个
+    assert fired == [a]  # only the first match per minute fires

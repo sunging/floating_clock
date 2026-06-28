@@ -1,11 +1,11 @@
-"""config.py 的单元测试：纯 helper 与存读往返。"""
+"""Unit tests for config.py: pure helpers and the save/load roundtrip."""
+
+import sys
+from pathlib import Path
 
 import pytest
 
 from floating_clock.alarm import REPEAT_CUSTOM, REPEAT_WEEKDAYS, Alarm
-import sys
-from pathlib import Path
-
 from floating_clock.config import (
     Config,
     _clamp_float,
@@ -17,7 +17,7 @@ from floating_clock.config import (
 )
 
 
-# ---- 纯 helper ----
+# ---- Pure helpers ----
 @pytest.mark.parametrize(
     "value,expected",
     [
@@ -36,21 +36,21 @@ def test_to_bool(value, expected):
 
 def test_clamp_float():
     assert _clamp_float(0.5, 0.0, 1.0, 0.75) == 0.5
-    assert _clamp_float(1.5, 0.0, 1.0, 0.75) == 1.0   # 上界裁剪
-    assert _clamp_float(-1, 0.0, 1.0, 0.75) == 0.0    # 下界裁剪
-    assert _clamp_float("bad", 0.0, 1.0, 0.75) == 0.75  # 非法→default
+    assert _clamp_float(1.5, 0.0, 1.0, 0.75) == 1.0   # clamp to upper bound
+    assert _clamp_float(-1, 0.0, 1.0, 0.75) == 0.0    # clamp to lower bound
+    assert _clamp_float("bad", 0.0, 1.0, 0.75) == 0.75  # invalid -> default
     assert _clamp_float(None, 0.0, 1.0, 0.75) == 0.75
 
 
 def test_is_installed():
-    # site-packages / dist-packages 内视为已安装。
+    # Under site-packages / dist-packages counts as installed.
     assert _is_installed(
         Path("/x/lib/site-packages/floating_clock/config.py")
     )
     assert _is_installed(
         Path("/usr/lib/python3/dist-packages/floating_clock/config.py")
     )
-    # 源码布局不算已安装。
+    # A source layout does not count as installed.
     assert not _is_installed(Path("/proj/src/floating_clock/config.py"))
 
 
@@ -82,7 +82,7 @@ def test_normalize_popup_layout():
     assert _normalize_popup_layout(None) == "label_time"
 
 
-# ---- 存读往返 ----
+# ---- Save/load roundtrip ----
 def test_save_load_roundtrip(temp_config_dir):
     cfg = Config(
         font_size=72,

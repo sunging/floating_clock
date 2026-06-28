@@ -1,4 +1,4 @@
-"""配置数据类与持久化（基于 QSettings 的 INI 文件，保存在程序目录的 config 下）。"""
+"""Config dataclass and persistence (QSettings INI file under the program's config dir)."""
 
 from __future__ import annotations
 
@@ -13,20 +13,21 @@ from PySide6.QtCore import QSettings
 
 from floating_clock.alarm import Alarm
 
-# 配置统一放在程序所在目录的 config 子目录下，与工作目录无关，
-# 这样开机自启（工作目录通常是 System32）也能读到同一份配置。
+# Config lives in a `config` subdir under the program directory, independent of
+# the working directory, so autostart (cwd is usually System32) reads the same file.
 CONFIG_DIRNAME = "config"
 CONFIG_FILENAME = "config.ini"
 
 
 def app_dir() -> Path:
-    """返回配置文件夹的基准目录。
+    """Return the base directory for the config folder.
 
-    - 打包为 exe（PyInstaller，``sys.frozen``）：exe 所在目录（便携模式，
-      配置随程序走）。
-    - 以 pip / ``uv tool`` 安装运行（包位于 site-packages 内）：用户级目录，
-      避免写进受管环境后被升级/重装清空。
-    - 直接以源码运行：项目根目录（``src`` 的上一级）。
+    - Packaged as an exe (PyInstaller, ``sys.frozen``): the exe's directory
+      (portable mode, config travels with the program).
+    - Installed via pip / ``uv tool`` (package under site-packages): a
+      user-level directory, so an upgrade/reinstall of the managed environment
+      doesn't wipe it.
+    - Run directly from source: the project root (parent of ``src``).
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -37,7 +38,7 @@ def app_dir() -> Path:
 
 
 def _is_installed(path: Path) -> bool:
-    """包是否安装在 site-packages / dist-packages 内（即非源码运行）。"""
+    """Whether the package lives under site-packages / dist-packages (i.e. installed)."""
     return any(
         parent.name in ("site-packages", "dist-packages")
         for parent in path.parents
@@ -45,7 +46,7 @@ def _is_installed(path: Path) -> bool:
 
 
 def _user_base_dir() -> Path:
-    """返回用户级配置基准目录（随平台约定）。"""
+    """Return the user-level config base directory (per platform convention)."""
     if sys.platform == "win32":
         base = os.environ.get("APPDATA") or str(Path.home())
         return Path(base) / "FloatingClock"
@@ -55,41 +56,41 @@ def _user_base_dir() -> Path:
 
 
 def config_dir() -> Path:
-    """返回配置文件夹（程序目录下的 config/），不存在时创建。"""
+    """Return the config folder (config/ under the program dir), creating it if absent."""
     directory = app_dir() / CONFIG_DIRNAME
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def config_path() -> Path:
-    """返回配置文件的绝对路径（程序目录下 config/config.ini）。"""
+    """Return the absolute config file path (config/config.ini under the program dir)."""
     return config_dir() / CONFIG_FILENAME
 
 
 def _settings() -> QSettings:
-    """以 INI 文件格式打开当前目录下的配置，避免写入注册表。"""
+    """Open the config in INI file format, avoiding the registry."""
     return QSettings(str(config_path()), QSettings.IniFormat)
 
 
 @dataclass
 class Config:
-    """浮动时钟的全部可调设置。"""
+    """All adjustable settings of the floating clock."""
 
     font_size: int = 48
-    opacity: float = 0.75          # 0.1–1.0，整体窗口透明度
-    color: str = "#FFFFFF"         # 文字颜色（十六进制）
-    auto_color: bool = False       # 是否根据背景明暗自动调整文字颜色
-    auto_color_dark_bg: str = "#F0F0F0"   # 背景偏暗时使用的（浅色）文字
-    auto_color_light_bg: str = "#202020"  # 背景偏亮时使用的（深色）文字
+    opacity: float = 0.75          # 0.1-1.0, overall window opacity
+    color: str = "#FFFFFF"         # text color (hex)
+    auto_color: bool = False       # auto-adjust text color to background brightness
+    auto_color_dark_bg: str = "#F0F0F0"   # (light) text used on a dark background
+    auto_color_light_bg: str = "#202020"  # (dark) text used on a light background
     show_seconds: bool = True
     show_date: bool = False
-    click_through: bool = True     # 默认鼠标穿透，不影响下层窗口
-    start_on_boot: bool = False    # 开机自启动
+    click_through: bool = True     # click-through by default, doesn't block windows below
+    start_on_boot: bool = False    # start on boot
     sound_mode: str = "system"     # silent / system / custom
-    sound_system_alias: str = "SystemHand"  # 系统提示音别名
-    sound_custom_path: str = ""    # 自定义提示音文件（WAV）路径
-    ring_when_screen_off: bool = False  # 默认关屏不响铃
-    pos_x: Optional[int] = None    # None 表示首次启动时居中/默认位置
+    sound_system_alias: str = "SystemHand"  # system sound alias
+    sound_custom_path: str = ""    # path to a custom sound file (WAV)
+    ring_when_screen_off: bool = False  # default: don't ring when the screen is off
+    pos_x: Optional[int] = None    # None means center/default position on first launch
     pos_y: Optional[int] = None
     alarm_popup_text_color: str = "#FF3030"
     alarm_popup_background_color: str = "#202020"
@@ -99,7 +100,7 @@ class Config:
     alarm_popup_layout: str = "label_time"
     alarms: list[Alarm] = field(default_factory=list)
 
-    # ---- 持久化 ----
+    # ---- Persistence ----
     @classmethod
     def load(cls) -> "Config":
         s = _settings()
@@ -217,7 +218,7 @@ class Config:
 
 
 def _to_bool(value) -> bool:
-    """QSettings 在某些平台把 bool 读成字符串，这里统一转换。"""
+    """QSettings reads bool as a string on some platforms; normalize here."""
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
@@ -226,7 +227,7 @@ def _to_bool(value) -> bool:
 
 
 def _clamp_float(value, low: float, high: float, default: float) -> float:
-    """读取数值配置并限制范围。"""
+    """Read a numeric setting and clamp it to a range."""
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -235,7 +236,7 @@ def _clamp_float(value, low: float, high: float, default: float) -> float:
 
 
 def _normalize_sound_mode(value) -> str:
-    """规整提示音模式：silent / system / custom，非法值回退到 system。"""
+    """Coerce the sound mode: silent / system / custom; invalid falls back to system."""
     value = str(value or "system")
     if value in ("silent", "system", "custom"):
         return value
@@ -243,7 +244,7 @@ def _normalize_sound_mode(value) -> str:
 
 
 def _normalize_popup_layout(value) -> str:
-    """规整闹钟弹出布局配置。"""
+    """Coerce the alarm popup layout setting."""
     value = str(value or "label_time")
     if value in ("label_time", "time_label", "label_only"):
         return value

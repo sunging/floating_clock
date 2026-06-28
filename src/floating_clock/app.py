@@ -1,4 +1,4 @@
-"""程序入口：组装时钟窗口、托盘菜单、定时器与闹钟。"""
+"""Program entry point: assembles the clock window, tray menu, timer, and alarms."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ class FloatingClockApp:
         self.app = app
         self.config = Config.load()
 
-        # 若已开启自启动，刷新注册表命令（解释器/路径可能已变动）。
+        # If autostart is on, refresh the registry command (interpreter/path may have changed).
         if self.config.start_on_boot and autostart.is_supported():
             autostart.set_enabled(True)
 
@@ -33,7 +33,7 @@ class FloatingClockApp:
         )
         self.clock.show()
 
-        # 监听显示器电源状态，用于"屏幕关闭时不响铃"。
+        # Monitor display power state for "don't ring when the screen is off".
         self.screen_monitor = ScreenStateMonitor()
         self.app.installNativeEventFilter(self.screen_monitor)
         self.screen_monitor.start(int(self.clock.winId()))
@@ -42,17 +42,17 @@ class FloatingClockApp:
         self.alarm_manager.set_alarms(self.config.alarms)
 
         self._ringing = False
-        self._auto_color_ticks = 0  # 节流自动调色：每若干个 tick 采样一次
+        self._auto_color_ticks = 0  # throttle auto-color: sample every few ticks
 
         self._build_tray()
 
-        # 主循环：刷新时间并检查闹钟。
+        # Main loop: refresh the time and check alarms.
         self.timer = QTimer()
         self.timer.setInterval(500)
         self.timer.timeout.connect(self._tick)
         self.timer.start()
 
-    # ---- 托盘 ----
+    # ---- Tray ----
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(_make_icon(), self.app)
         self.tray.setToolTip("浮动时钟")
@@ -86,17 +86,19 @@ class FloatingClockApp:
         self.tray.show()
 
     def _on_tray_activated(self, reason) -> None:
-        # 双击托盘也可打开设置。
+        # Double-clicking the tray also opens settings.
         if reason == QSystemTrayIcon.DoubleClick:
             self._open_settings()
 
-    # ---- 主循环 ----
+    # ---- Main loop ----
     def _tick(self) -> None:
         self.clock.update_time()
-        # 屏幕关闭且未开启"关屏仍响铃"时，跳过闹钟检查（不触发、不消耗单次闹钟）。
+        # When the screen is off and "ring when screen off" is disabled, skip the
+        # alarm check (don't fire, don't consume a one-shot alarm).
         if self._alarms_active():
             self.alarm_manager.check()
-        # 抓屏开销较大，约每 2 秒（每 4 个 500ms tick）才重新采样背景色。
+        # Grabbing the screen is costly, so re-sample the background only about
+        # every 2 seconds (every 4 of the 500ms ticks).
         if self.config.auto_color:
             self._auto_color_ticks += 1
             if self._auto_color_ticks >= 4:
@@ -104,14 +106,14 @@ class FloatingClockApp:
                 self.clock.update_auto_color()
 
     def _alarms_active(self) -> bool:
-        """当前是否应检查闹钟（屏幕点亮，或已允许关屏响铃）。"""
+        """Whether alarms should be checked now (screen on, or ring-when-off allowed)."""
         if self.config.ring_when_screen_off:
             return True
         return not self.screen_monitor.is_display_off()
 
-    # ---- 设置 ----
+    # ---- Settings ----
     def _open_settings(self) -> None:
-        # 记录原配置，便于「取消」时回滚实时预览的改动。
+        # Snapshot the original config so "Cancel" can roll back live preview changes.
         original = copy.deepcopy(self.config)
         dlg = SettingsDialog(
             self.config,
@@ -122,7 +124,7 @@ class FloatingClockApp:
             if not self._ringing:
                 self.clock.stop_flashing()
             self.config = dlg.result_config()
-            # 应用开机自启动到注册表，并以实际结果回写配置。
+            # Apply autostart to the registry and write back the actual result.
             self.config.start_on_boot = autostart.set_enabled(
                 self.config.start_on_boot
             )
@@ -131,18 +133,18 @@ class FloatingClockApp:
             self.alarm_manager.set_alarms(self.config.alarms)
             self._lock_action.setChecked(self.config.click_through)
         else:
-            # 取消：还原预览前的外观。
+            # Cancel: restore the appearance from before the preview.
             if not self._ringing:
                 self.clock.stop_flashing()
             self.config = original
             self.clock.apply_config(self.config)
 
     def _preview_config(self, cfg: Config) -> None:
-        """实时预览：把外观改动立即应用到时钟（不落盘）。"""
+        """Live preview: apply appearance changes to the clock immediately (no save)."""
         self.clock.apply_config(cfg)
 
     def _preview_alarm_popup(self, cfg: Config) -> None:
-        """预览闹钟弹出样式，不播放提示音。"""
+        """Preview the alarm popup style without playing a sound."""
         if self._ringing:
             return
         self.clock.apply_config(cfg)
@@ -153,10 +155,10 @@ class FloatingClockApp:
         self.clock.set_click_through(enabled)
         self.config.save()
 
-    # ---- 移动模式 ----
+    # ---- Move mode ----
     def _toggle_move_mode(self, enabled: bool) -> None:
         if enabled:
-            # 临时关闭穿透并显示边框提示，便于拖动。
+            # Temporarily disable click-through and show a border hint for dragging.
             self.clock.set_click_through(False)
             self.clock.set_move_hint(True)
             self.tray.showMessage(
@@ -166,21 +168,21 @@ class FloatingClockApp:
                 4000,
             )
         else:
-            # 退出移动模式：去掉提示并恢复用户原来的穿透设置。
+            # Exit move mode: remove the hint and restore the user's click-through setting.
             self.clock.set_move_hint(False)
             self.clock.set_click_through(self.config.click_through)
 
     def _on_clock_moved(self) -> None:
-        # 拖动结束后自动退出移动模式（toggled 信号会恢复穿透）。
+        # Auto-exit move mode after a drag (the toggled signal restores click-through).
         if self._move_action.isChecked():
             self._move_action.setChecked(False)
 
-    # ---- 闹钟 ----
+    # ---- Alarm ----
     def _on_alarm(self, alarm: Alarm) -> None:
         self._ringing = True
         self._stop_action.setEnabled(True)
 
-        # 响铃时临时关闭穿透并置顶，便于点击消除。
+        # While ringing, temporarily disable click-through and raise it for click-to-dismiss.
         self.clock.set_click_through(False)
         self.clock.show()
         self.clock.raise_()
@@ -200,7 +202,7 @@ class FloatingClockApp:
             10000,
         )
 
-        # 单次闹钟触发后已被停用，保存状态。
+        # A one-shot alarm is now disabled after firing; persist the state.
         if alarm.is_once():
             self.config.alarms = self.alarm_manager.alarms
             self.config.save()
@@ -216,7 +218,7 @@ class FloatingClockApp:
         self._stop_action.setEnabled(False)
         sound.stop()
         self.clock.stop_flashing()
-        # 恢复用户原来的穿透设置。
+        # Restore the user's original click-through setting.
         self.clock.set_click_through(self.config.click_through)
 
     def _quit(self) -> None:
@@ -226,7 +228,7 @@ class FloatingClockApp:
 
 
 def _make_icon() -> QIcon:
-    """生成一个简单的时钟托盘图标，避免依赖外部资源文件。"""
+    """Generate a simple clock tray icon, avoiding external resource files."""
     pix = QPixmap(64, 64)
     pix.fill(Qt.transparent)
     painter = QPainter(pix)
@@ -235,7 +237,7 @@ def _make_icon() -> QIcon:
     pen.setWidth(5)
     painter.setPen(pen)
     painter.drawEllipse(6, 6, 52, 52)
-    # 指针
+    # Hands
     painter.drawLine(32, 32, 32, 14)
     painter.drawLine(32, 32, 46, 38)
     painter.end()
@@ -243,29 +245,30 @@ def _make_icon() -> QIcon:
 
 
 def _detach_to_background() -> bool:
-    """Windows 上把自身重启为脱离终端的后台进程，立即释放前台终端。
+    """On Windows, relaunch self as a detached background process, freeing the foreground terminal.
 
-    通过环境变量哨兵避免无限重启：已是后台子进程时直接返回 False 继续运行。
-    非 Windows 平台不处理（返回 False）。
+    An environment-variable sentinel avoids infinite relaunching: when already
+    the background child, return False and run normally. Non-Windows platforms
+    are not handled (returns False).
     """
     import os
 
     if sys.platform != "win32":
         return False
     if os.environ.get("FLOATING_CLOCK_DETACHED") == "1":
-        return False  # 已是后台子进程，正常启动
+        return False  # already the background child, start normally
 
     try:
         import subprocess
         from pathlib import Path
 
-        # 优先用 pythonw.exe，避免子进程弹出控制台窗口。
+        # Prefer pythonw.exe so the child doesn't pop up a console window.
         exe = Path(sys.executable)
         pythonw = exe.with_name("pythonw.exe")
         python = str(pythonw) if pythonw.exists() else sys.executable
 
         env = dict(os.environ, FLOATING_CLOCK_DETACHED="1")
-        # DETACHED_PROCESS 切断与当前控制台的关联，CREATE_NO_WINDOW 兜底防黑框。
+        # DETACHED_PROCESS severs the current console; CREATE_NO_WINDOW guards against a black box.
         creationflags = 0x00000008 | 0x00000200 | 0x08000000
         subprocess.Popen(
             [python, "-m", "floating_clock", *sys.argv[1:]],
@@ -275,16 +278,16 @@ def _detach_to_background() -> bool:
         )
         return True
     except Exception:
-        # 后台化失败则退回前台直接运行，保证功能可用。
+        # If backgrounding fails, fall back to running in the foreground.
         return False
 
 
 def main() -> int:
     if _detach_to_background():
-        return 0  # 父进程立即退出，归还前台终端
+        return 0  # parent exits immediately, returning the foreground terminal
 
     app = QApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)  # 关闭窗口不退出，靠托盘控制
+    app.setQuitOnLastWindowClosed(False)  # closing windows doesn't quit; tray controls lifecycle
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
         QMessageBox.warning(

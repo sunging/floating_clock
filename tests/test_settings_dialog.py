@@ -1,4 +1,4 @@
-"""settings_dialog.py 模块级纯函数测试（仅需可导入，无需 QApplication）。"""
+"""Module-level pure-function tests for settings_dialog.py (importable, no QApplication needed)."""
 
 import pytest
 
@@ -18,7 +18,7 @@ from floating_clock.settings_dialog import _parse_hhmm, _repeat_label
         ("08:30", (8, 30)),
         ("00:00", (0, 0)),
         ("23:59", (23, 59)),
-        ("xx", (8, 0)),       # 畸形→默认
+        ("xx", (8, 0)),       # malformed -> default
         ("", (8, 0)),
         (None, (8, 0)),
     ],

@@ -9,10 +9,11 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
-from floating_clock import autostart
+from floating_clock import autostart, sound
 from floating_clock.alarm import Alarm, AlarmManager
 from floating_clock.clock_window import ClockWindow
 from floating_clock.config import Config
+from floating_clock.screen import ScreenStateMonitor
 from floating_clock.settings_dialog import SettingsDialog
 
 
@@ -31,6 +32,11 @@ class FloatingClockApp:
             on_moved=self._on_clock_moved,
         )
         self.clock.show()
+
+        # 监听显示器电源状态，用于"屏幕关闭时不响铃"。
+        self.screen_monitor = ScreenStateMonitor()
+        self.app.installNativeEventFilter(self.screen_monitor)
+        self.screen_monitor.start(int(self.clock.winId()))
 
         self.alarm_manager = AlarmManager(on_trigger=self._on_alarm)
         self.alarm_manager.set_alarms(self.config.alarms)
@@ -87,13 +93,21 @@ class FloatingClockApp:
     # ---- 主循环 ----
     def _tick(self) -> None:
         self.clock.update_time()
-        self.alarm_manager.check()
+        # 屏幕关闭且未开启"关屏仍响铃"时，跳过闹钟检查（不触发、不消耗单次闹钟）。
+        if self._alarms_active():
+            self.alarm_manager.check()
         # 抓屏开销较大，约每 2 秒（每 4 个 500ms tick）才重新采样背景色。
         if self.config.auto_color:
             self._auto_color_ticks += 1
             if self._auto_color_ticks >= 4:
                 self._auto_color_ticks = 0
                 self.clock.update_auto_color()
+
+    def _alarms_active(self) -> bool:
+        """当前是否应检查闹钟（屏幕点亮，或已允许关屏响铃）。"""
+        if self.config.ring_when_screen_off:
+            return True
+        return not self.screen_monitor.is_display_off()
 
     # ---- 设置 ----
     def _open_settings(self) -> None:
@@ -173,7 +187,12 @@ class FloatingClockApp:
         self.clock.activateWindow()
         self.clock.start_flashing(alarm.label, alarm.content)
 
-        _play_sound(loop=True)
+        sound.play(
+            self.config.sound_mode,
+            self.config.sound_system_alias,
+            self.config.sound_custom_path,
+            loop=True,
+        )
         self.tray.showMessage(
             alarm.label,
             alarm.content or alarm.label,
@@ -195,13 +214,13 @@ class FloatingClockApp:
             return
         self._ringing = False
         self._stop_action.setEnabled(False)
-        _play_sound(loop=False)  # 停声
+        sound.stop()
         self.clock.stop_flashing()
         # 恢复用户原来的穿透设置。
         self.clock.set_click_through(self.config.click_through)
 
     def _quit(self) -> None:
-        _play_sound(loop=False)
+        sound.stop()
         self.tray.hide()
         self.app.quit()
 
@@ -221,24 +240,6 @@ def _make_icon() -> QIcon:
     painter.drawLine(32, 32, 46, 38)
     painter.end()
     return QIcon(pix)
-
-
-def _play_sound(loop: bool) -> None:
-    """Windows 上用 winsound 播放/停止提示音；其它平台静默跳过。"""
-    if sys.platform != "win32":
-        return
-    try:
-        import winsound
-
-        if loop:
-            winsound.PlaySound(
-                "SystemHand",
-                winsound.SND_ALIAS | winsound.SND_ASYNC | winsound.SND_LOOP,
-            )
-        else:
-            winsound.PlaySound(None, 0)
-    except Exception:
-        pass
 
 
 def _detach_to_background() -> bool:

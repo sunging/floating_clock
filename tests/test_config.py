@@ -7,6 +7,7 @@ from floating_clock.config import (
     Config,
     _clamp_float,
     _normalize_popup_layout,
+    _normalize_sound_mode,
     _to_bool,
 )
 
@@ -36,6 +37,14 @@ def test_clamp_float():
     assert _clamp_float(None, 0.0, 1.0, 0.75) == 0.75
 
 
+def test_normalize_sound_mode():
+    assert _normalize_sound_mode("silent") == "silent"
+    assert _normalize_sound_mode("system") == "system"
+    assert _normalize_sound_mode("custom") == "custom"
+    assert _normalize_sound_mode("nonsense") == "system"
+    assert _normalize_sound_mode(None) == "system"
+
+
 def test_normalize_popup_layout():
     assert _normalize_popup_layout("label_time") == "label_time"
     assert _normalize_popup_layout("time_label") == "time_label"
@@ -58,6 +67,10 @@ def test_save_load_roundtrip(temp_config_dir):
         click_through=False,
         pos_x=100,
         pos_y=200,
+        sound_mode="custom",
+        sound_system_alias="SystemAsterisk",
+        sound_custom_path=r"C:\sound.wav",
+        ring_when_screen_off=True,
         alarm_popup_layout="time_label",
         alarms=[
             Alarm(time="07:30", label="起床", repeat_type=REPEAT_WEEKDAYS),
@@ -83,6 +96,10 @@ def test_save_load_roundtrip(temp_config_dir):
     assert loaded.click_through is False
     assert loaded.pos_x == 100
     assert loaded.pos_y == 200
+    assert loaded.sound_mode == "custom"
+    assert loaded.sound_system_alias == "SystemAsterisk"
+    assert loaded.sound_custom_path == r"C:\sound.wav"
+    assert loaded.ring_when_screen_off is True
     assert loaded.alarm_popup_layout == "time_label"
 
     assert len(loaded.alarms) == 2

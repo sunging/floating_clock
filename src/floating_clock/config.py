@@ -60,6 +60,10 @@ class Config:
     show_date: bool = False
     click_through: bool = True     # 默认鼠标穿透，不影响下层窗口
     start_on_boot: bool = False    # 开机自启动
+    sound_mode: str = "system"     # silent / system / custom
+    sound_system_alias: str = "SystemHand"  # 系统提示音别名
+    sound_custom_path: str = ""    # 自定义提示音文件（WAV）路径
+    ring_when_screen_off: bool = False  # 默认关屏不响铃
     pos_x: Optional[int] = None    # None 表示首次启动时居中/默认位置
     pos_y: Optional[int] = None
     alarm_popup_text_color: str = "#FF3030"
@@ -89,6 +93,18 @@ class Config:
         cfg.show_date = _to_bool(s.value("show_date", cfg.show_date))
         cfg.click_through = _to_bool(s.value("click_through", cfg.click_through))
         cfg.start_on_boot = _to_bool(s.value("start_on_boot", cfg.start_on_boot))
+        cfg.sound_mode = _normalize_sound_mode(
+            s.value("sound_mode", cfg.sound_mode)
+        )
+        cfg.sound_system_alias = str(
+            s.value("sound_system_alias", cfg.sound_system_alias)
+        )
+        cfg.sound_custom_path = str(
+            s.value("sound_custom_path", cfg.sound_custom_path)
+        )
+        cfg.ring_when_screen_off = _to_bool(
+            s.value("ring_when_screen_off", cfg.ring_when_screen_off)
+        )
         cfg.alarm_popup_text_color = str(
             s.value("alarm_popup_text_color", cfg.alarm_popup_text_color)
         )
@@ -147,6 +163,10 @@ class Config:
         s.setValue("show_date", bool(self.show_date))
         s.setValue("click_through", bool(self.click_through))
         s.setValue("start_on_boot", bool(self.start_on_boot))
+        s.setValue("sound_mode", _normalize_sound_mode(self.sound_mode))
+        s.setValue("sound_system_alias", str(self.sound_system_alias))
+        s.setValue("sound_custom_path", str(self.sound_custom_path))
+        s.setValue("ring_when_screen_off", bool(self.ring_when_screen_off))
         s.setValue("pos_x", "" if self.pos_x is None else int(self.pos_x))
         s.setValue("pos_y", "" if self.pos_y is None else int(self.pos_y))
         s.setValue("alarm_popup_text_color", str(self.alarm_popup_text_color))
@@ -187,6 +207,14 @@ def _clamp_float(value, low: float, high: float, default: float) -> float:
     except (TypeError, ValueError):
         return default
     return max(low, min(high, number))
+
+
+def _normalize_sound_mode(value) -> str:
+    """规整提示音模式：silent / system / custom，非法值回退到 system。"""
+    value = str(value or "system")
+    if value in ("silent", "system", "custom"):
+        return value
+    return "system"
 
 
 def _normalize_popup_layout(value) -> str:

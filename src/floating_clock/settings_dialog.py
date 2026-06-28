@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -30,7 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from floating_clock import autostart
+from floating_clock import autostart, sound
 from floating_clock.alarm import (
     REPEAT_CUSTOM,
     REPEAT_DAILY,
@@ -71,6 +72,7 @@ class SettingsDialog(QDialog):
         top_row.addWidget(self._build_alarm_popup_group(), 0, Qt.AlignTop)
         layout.addLayout(top_row)
 
+        layout.addWidget(self._build_sound_group())
         layout.addWidget(self._build_alarm_group())
 
         buttons = QDialogButtonBox(
@@ -323,6 +325,89 @@ class SettingsDialog(QDialog):
         cfg.alarm_popup_font_scale = self._alarm_font_scale_spin.value()
         cfg.alarm_popup_layout = self._alarm_layout_combo.currentData()
 
+    # ---- 提示音 ----
+    def _build_sound_group(self) -> QGroupBox:
+        group = QGroupBox("提示音与响铃")
+        form = QFormLayout(group)
+
+        self._sound_mode_combo = QComboBox()
+        self._sound_mode_combo.addItem("无声", sound.SOUND_SILENT)
+        self._sound_mode_combo.addItem("系统提示音", sound.SOUND_SYSTEM)
+        self._sound_mode_combo.addItem("自定义文件", sound.SOUND_CUSTOM)
+        mode_idx = self._sound_mode_combo.findData(
+            sound.normalize_mode(self._config.sound_mode)
+        )
+        self._sound_mode_combo.setCurrentIndex(max(0, mode_idx))
+        self._sound_mode_combo.currentIndexChanged.connect(
+            self._update_sound_enabled
+        )
+        form.addRow("提示音", self._sound_mode_combo)
+
+        self._sound_alias_combo = QComboBox()
+        for alias, name in sound.SYSTEM_SOUNDS:
+            self._sound_alias_combo.addItem(name, alias)
+        alias_idx = self._sound_alias_combo.findData(
+            self._config.sound_system_alias
+        )
+        self._sound_alias_combo.setCurrentIndex(max(0, alias_idx))
+        form.addRow("系统提示音", self._sound_alias_combo)
+
+        self._sound_path_edit = QLineEdit(self._config.sound_custom_path)
+        self._sound_path_edit.setPlaceholderText("选择 WAV 文件…")
+        browse_btn = QPushButton("浏览…")
+        browse_btn.clicked.connect(self._pick_sound_file)
+        path_row = QHBoxLayout()
+        path_row.addWidget(self._sound_path_edit, 1)
+        path_row.addWidget(browse_btn)
+        path_w = QWidget()
+        path_w.setLayout(path_row)
+        form.addRow("自定义文件", path_w)
+
+        self._sound_test_btn = QPushButton("试听")
+        self._sound_test_btn.clicked.connect(self._test_sound)
+        form.addRow(self._sound_test_btn)
+
+        self._ring_screen_off_chk = QCheckBox(
+            "屏幕关闭时仍响铃（默认关闭，即关屏不响）"
+        )
+        self._ring_screen_off_chk.setChecked(self._config.ring_when_screen_off)
+        form.addRow(self._ring_screen_off_chk)
+
+        self._update_sound_enabled()
+        return group
+
+    def _update_sound_enabled(self) -> None:
+        """根据提示音模式启用/禁用别名下拉、自定义文件与试听。"""
+        mode = self._sound_mode_combo.currentData()
+        self._sound_alias_combo.setEnabled(mode == sound.SOUND_SYSTEM)
+        self._sound_path_edit.setEnabled(mode == sound.SOUND_CUSTOM)
+        self._sound_test_btn.setEnabled(mode != sound.SOUND_SILENT)
+
+    def _pick_sound_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择提示音文件",
+            self._sound_path_edit.text().strip(),
+            "WAV 音频 (*.wav)",
+        )
+        if path:
+            self._sound_path_edit.setText(path)
+
+    def _test_sound(self) -> None:
+        """试听当前选择的提示音（播放一次，不循环）。"""
+        sound.play(
+            self._sound_mode_combo.currentData(),
+            self._sound_alias_combo.currentData(),
+            self._sound_path_edit.text().strip(),
+            loop=False,
+        )
+
+    def _apply_sound_values(self, cfg: Config) -> None:
+        cfg.sound_mode = self._sound_mode_combo.currentData()
+        cfg.sound_system_alias = self._sound_alias_combo.currentData()
+        cfg.sound_custom_path = self._sound_path_edit.text().strip()
+        cfg.ring_when_screen_off = self._ring_screen_off_chk.isChecked()
+
     # ---- 闹钟 ----
     def _build_alarm_group(self) -> QGroupBox:
         group = QGroupBox("闹钟")
@@ -494,6 +579,7 @@ class SettingsDialog(QDialog):
         cfg.click_through = self._click_through_chk.isChecked()
         cfg.start_on_boot = self._boot_chk.isChecked()
         self._apply_alarm_popup_values(cfg)
+        self._apply_sound_values(cfg)
 
         alarms: list[Alarm] = []
         for i in range(self._alarm_list.count()):

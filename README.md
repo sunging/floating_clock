@@ -33,6 +33,25 @@ uv run floating-clock
 uv run python -m floating_clock
 ```
 
+如果想直接从 Git 仓库安装为 uv tool，可以使用：
+
+```powershell
+uv tool install git+https://github.com/sunging/floating_clock.git
+floating-clock
+```
+
+升级到仓库最新版本：
+
+```powershell
+uv tool upgrade floating-clock
+```
+
+卸载：
+
+```powershell
+uv tool uninstall floating-clock
+```
+
 ## 使用说明
 
 - **打开设置**：右键点击系统托盘里的时钟图标 →「设置…」（或双击托盘图标）。

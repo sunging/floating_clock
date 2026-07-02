@@ -6,7 +6,7 @@ import copy
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QVBoxLayout,
@@ -66,15 +67,27 @@ class SettingsDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
+        # Content is scrollable so that at high system DPI scaling factors,
+        # the dialog still fits on screen instead of overflowing off the bottom.
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
         # Top two columns: appearance on the left, alarm popup style on the right,
         # to shorten overall height and widen the layout.
         top_row = QHBoxLayout()
         top_row.addWidget(self._build_appearance_group(), 0, Qt.AlignTop)
         top_row.addWidget(self._build_alarm_popup_group(), 0, Qt.AlignTop)
-        layout.addLayout(top_row)
+        content_layout.addLayout(top_row)
 
-        layout.addWidget(self._build_sound_group())
-        layout.addWidget(self._build_alarm_group())
+        content_layout.addWidget(self._build_sound_group())
+        content_layout.addWidget(self._build_alarm_group())
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel
@@ -82,6 +95,21 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        self._size_to_screen(content)
+
+    def _size_to_screen(self, content: QWidget) -> None:
+        """Cap the dialog to the available screen geometry so a high system
+        DPI scale factor can't push it (or its buttons) off-screen."""
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        available = screen.availableGeometry() if screen else None
+        hint = content.sizeHint()
+        width = hint.width() + 40
+        height = hint.height() + 80
+        if available is not None:
+            width = min(width, available.width() - 40)
+            height = min(height, available.height() - 40)
+        self.resize(width, height)
 
     # ---- Appearance ----
     def _build_appearance_group(self) -> QGroupBox:

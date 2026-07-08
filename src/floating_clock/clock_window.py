@@ -7,7 +7,7 @@ from datetime import datetime
 from statistics import median
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QGuiApplication
 from PySide6.QtWidgets import QLabel, QWidget
 
@@ -83,8 +83,9 @@ class ClockWindow(QWidget):
         self._fit()
 
         if config.pos_x is not None and config.pos_y is not None:
-            self.move(config.pos_x, config.pos_y)
-        self._clamp_to_screen()
+            self._move_to_configured_position()
+        else:
+            self._clamp_to_screen()
 
         self.set_click_through(config.click_through)
 
@@ -188,28 +189,44 @@ class ClockWindow(QWidget):
 
     # ---- Screen boundary clamping ----
     def _current_screen(self):
-        """Return the screen the window is currently on, falling back to the primary screen."""
-        screen = self.screen()
-        if screen is None:
-            screen = QGuiApplication.screenAt(self.frameGeometry().center())
-        if screen is None:
-            screen = QGuiApplication.primaryScreen()
-        return screen
+        """Return the screen containing the window geometry."""
+        return self._screen_for_geometry(self.frameGeometry())
+
+    def _screen_for_geometry(self, geometry: QRect):
+        """Return the best screen for a target geometry."""
+        return _screen_for_geometry(
+            geometry,
+            QGuiApplication.screens(),
+            QGuiApplication.screenAt,
+            QGuiApplication.primaryScreen(),
+        )
+
+    def _window_geometry(self) -> QRect:
+        return QRect(self.x(), self.y(), self.width(), self.height())
+
+    def _move_to_configured_position(self) -> None:
+        if self.config.pos_x is None or self.config.pos_y is None:
+            return
+        target = QRect(
+            self.config.pos_x,
+            self.config.pos_y,
+            self.width(),
+            self.height(),
+        )
+        self._move_clamped(target)
 
     def _clamp_to_screen(self) -> None:
         """Move the window into the current screen's available area to avoid overflow."""
-        screen = self._current_screen()
+        self._move_clamped(self._window_geometry())
+
+    def _move_clamped(self, geometry: QRect) -> None:
+        screen = self._screen_for_geometry(geometry)
         if screen is None:
             return
         area = screen.availableGeometry()
-        x, y = self.x(), self.y()
-        # The window may be larger than the screen; in that case just pin to the top-left.
-        max_x = max(area.left(), area.left() + area.width() - self.width())
-        max_y = max(area.top(), area.top() + area.height() - self.height())
-        new_x = min(max(x, area.left()), max_x)
-        new_y = min(max(y, area.top()), max_y)
-        if (new_x, new_y) != (x, y):
-            self.move(new_x, new_y)
+        top_left = _clamped_top_left(geometry, area)
+        if top_left != self.pos():
+            self.move(top_left)
 
     # ---- Time display ----
     def update_time(self) -> None:
@@ -362,3 +379,37 @@ def _rgba(color: str, opacity: float) -> str:
         f"rgba({qcolor.red()}, {qcolor.green()}, "
         f"{qcolor.blue()}, {alpha})"
     )
+
+
+def _screen_for_geometry(geometry: QRect, screens, screen_at, fallback):
+    """Pick a screen from the target geometry instead of the widget's stale screen."""
+    screen = screen_at(geometry.center()) if screen_at is not None else None
+    if screen is not None:
+        return screen
+
+    best_screen = None
+    best_area = 0
+    for candidate in screens:
+        area = _intersection_area(geometry, candidate.availableGeometry())
+        if area > best_area:
+            best_screen = candidate
+            best_area = area
+    if best_screen is not None:
+        return best_screen
+    return fallback
+
+
+def _intersection_area(a: QRect, b: QRect) -> int:
+    intersection = a.intersected(b)
+    if intersection.isEmpty():
+        return 0
+    return intersection.width() * intersection.height()
+
+
+def _clamped_top_left(geometry: QRect, area: QRect) -> QPoint:
+    """Clamp a window rectangle into a screen's available area."""
+    max_x = max(area.left(), area.left() + area.width() - geometry.width())
+    max_y = max(area.top(), area.top() + area.height() - geometry.height())
+    x = min(max(geometry.x(), area.left()), max_x)
+    y = min(max(geometry.y(), area.top()), max_y)
+    return QPoint(x, y)

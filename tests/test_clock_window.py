@@ -1,8 +1,14 @@
 """Tests for clock_window.py helpers (building widgets needs an offscreen QApplication)."""
 
 import pytest
+from PySide6.QtCore import QPoint, QRect
 
-from floating_clock.clock_window import ClockWindow, _rgba
+from floating_clock.clock_window import (
+    ClockWindow,
+    _clamped_top_left,
+    _rgba,
+    _screen_for_geometry,
+)
 from floating_clock.config import Config
 
 
@@ -23,6 +29,93 @@ def test_rgba_alpha_clamped():
 def test_rgba_invalid_color_fallback():
     # invalid color falls back to #202020 = rgb(32,32,32)
     assert _rgba("not-a-color", 1.0) == "rgba(32, 32, 32, 255)"
+
+
+# ---- Multi-screen geometry helpers ----
+class FakeScreen:
+    def __init__(self, area: QRect):
+        self._area = area
+
+    def availableGeometry(self) -> QRect:
+        return self._area
+
+
+def _fake_screen_at(screens):
+    def screen_at(point):
+        for screen in screens:
+            if screen.availableGeometry().contains(point):
+                return screen
+        return None
+
+    return screen_at
+
+
+def test_screen_for_geometry_uses_secondary_screen_center():
+    primary = FakeScreen(QRect(0, 0, 1920, 1080))
+    secondary = FakeScreen(QRect(1920, 0, 1920, 1080))
+    screens = [primary, secondary]
+
+    screen = _screen_for_geometry(
+        QRect(2100, 100, 300, 100),
+        screens,
+        _fake_screen_at(screens),
+        primary,
+    )
+
+    assert screen is secondary
+
+
+def test_screen_for_geometry_handles_negative_coordinate_screen():
+    left = FakeScreen(QRect(-1280, 0, 1280, 1024))
+    primary = FakeScreen(QRect(0, 0, 1920, 1080))
+    screens = [left, primary]
+
+    screen = _screen_for_geometry(
+        QRect(-1200, 200, 300, 100),
+        screens,
+        _fake_screen_at(screens),
+        primary,
+    )
+
+    assert screen is left
+
+
+def test_screen_for_geometry_falls_back_to_largest_intersection():
+    primary = FakeScreen(QRect(0, 0, 1920, 1080))
+    secondary = FakeScreen(QRect(1920, 0, 1920, 1080))
+
+    screen = _screen_for_geometry(
+        QRect(1800, 100, 500, 100),
+        [primary, secondary],
+        lambda _point: None,
+        primary,
+    )
+
+    assert screen is secondary
+
+
+def test_clamped_top_left_keeps_secondary_screen_position():
+    area = QRect(1920, 0, 1920, 1080)
+
+    assert _clamped_top_left(QRect(2300, 900, 500, 300), area) == QPoint(2300, 780)
+
+
+def test_clamped_top_left_pins_oversized_window_to_screen_origin():
+    area = QRect(0, 0, 1000, 800)
+
+    assert _clamped_top_left(QRect(100, 100, 2000, 1200), area) == QPoint(0, 0)
+
+
+def test_configured_position_moves_when_no_clamp_needed(clock):
+    secondary = FakeScreen(QRect(1920, 0, 1920, 1080))
+    clock.config.pos_x = 2100
+    clock.config.pos_y = 120
+    clock.resize(200, 80)
+    clock._screen_for_geometry = lambda _geometry: secondary
+
+    clock._move_to_configured_position()
+
+    assert clock.pos() == QPoint(2100, 120)
 
 
 # ---- Auto color (needs qapp to build ClockWindow) ----

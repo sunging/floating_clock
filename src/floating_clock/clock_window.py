@@ -215,6 +215,13 @@ class ClockWindow(QWidget):
         )
         self._move_clamped(target)
 
+    def restore_position(self) -> None:
+        """Restore the saved position after Windows changes the display layout."""
+        if self.config.pos_x is not None and self.config.pos_y is not None:
+            self._move_to_configured_position()
+        else:
+            self._clamp_to_screen()
+
     def _clamp_to_screen(self) -> None:
         """Move the window into the current screen's available area to avoid overflow."""
         self._move_clamped(self._window_geometry())

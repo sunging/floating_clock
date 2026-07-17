@@ -10,11 +10,14 @@ no-op and always reports the screen as on.
 from __future__ import annotations
 
 import sys
+from typing import Callable, Optional
 
 from PySide6.QtCore import QAbstractNativeEventFilter
 
 _WM_POWERBROADCAST = 0x0218
 _PBT_POWERSETTINGCHANGE = 0x8013
+_PBT_APMRESUMESUSPEND = 0x0007
+_PBT_APMRESUMEAUTOMATIC = 0x0012
 _DEVICE_NOTIFY_WINDOW_HANDLE = 0x0
 
 # Display state values: 0=off, 1=on, 2=dimmed.
@@ -62,12 +65,16 @@ if sys.platform == "win32":
 class ScreenStateMonitor(QAbstractNativeEventFilter):
     """Tracks monitor power state; call ``start`` after installing as an app-level filter."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        on_wake: Optional[Callable[[], None]] = None,
+    ) -> None:
         super().__init__()
         # The state can't be queried at startup; assume the screen is on
         # (better to ring than to miss an alarm).
         self._display_on = True
         self._handle = None
+        self._on_wake = on_wake
 
     def is_display_off(self) -> bool:
         return not self._display_on
@@ -101,14 +108,22 @@ class ScreenStateMonitor(QAbstractNativeEventFilter):
             if kind != b"windows_generic_MSG":
                 return False, 0
             msg = _MSG.from_address(int(message))
-            if (
-                msg.message == _WM_POWERBROADCAST
-                and msg.wParam == _PBT_POWERSETTINGCHANGE
-                and msg.lParam
-            ):
+            if msg.message != _WM_POWERBROADCAST:
+                return False, 0
+            if msg.wParam in (_PBT_APMRESUMESUSPEND, _PBT_APMRESUMEAUTOMATIC):
+                if self._on_wake is not None:
+                    self._on_wake()
+            elif msg.wParam == _PBT_POWERSETTINGCHANGE and msg.lParam:
                 setting = _POWERBROADCAST_SETTING.from_address(int(msg.lParam))
                 if bytes(setting.PowerSetting) == bytes(_CONSOLE_DISPLAY_STATE):
+                    was_display_on = self._display_on
                     self._display_on = setting.Data[0] != _DISPLAY_OFF
+                    if (
+                        self._display_on
+                        and not was_display_on
+                        and self._on_wake is not None
+                    ):
+                        self._on_wake()
         except Exception:
             pass
         return False, 0

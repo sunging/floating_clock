@@ -57,3 +57,53 @@ def test_unrelated_message_ignored():
     msg.message = 0x0001  # not WM_POWERBROADCAST
     monitor.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
     assert monitor.is_display_off() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native message parsing is Windows-only")
+def test_display_on_transition_invokes_wake_callback():
+    import ctypes
+
+    from floating_clock import screen
+
+    wake_events = []
+    monitor = ScreenStateMonitor(on_wake=lambda: wake_events.append(True))
+
+    setting = screen._POWERBROADCAST_SETTING()
+    setting.PowerSetting = screen._CONSOLE_DISPLAY_STATE
+    setting.DataLength = 4
+    msg = screen._MSG()
+    msg.message = 0x0218
+    msg.wParam = 0x8013
+    msg.lParam = ctypes.addressof(setting)
+
+    setting.Data[0] = 1
+    monitor.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
+    assert wake_events == []
+
+    setting.Data[0] = 0
+    monitor.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
+    setting.Data[0] = 1
+    monitor.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
+
+    assert wake_events == [True]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native message parsing is Windows-only")
+@pytest.mark.parametrize("resume_event", [0x0007, 0x0012])
+def test_resume_broadcast_invokes_wake_callback(resume_event):
+    import ctypes
+
+    from floating_clock import screen
+
+    wake_events = []
+    monitor = ScreenStateMonitor(on_wake=lambda: wake_events.append(True))
+    msg = screen._MSG()
+    msg.message = 0x0218
+    msg.wParam = resume_event
+
+    handled, _ = monitor.nativeEventFilter(
+        b"windows_generic_MSG", ctypes.addressof(msg)
+    )
+
+    assert handled is False
+    assert wake_events == [True]

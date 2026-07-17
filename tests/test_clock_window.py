@@ -118,6 +118,19 @@ def test_configured_position_moves_when_no_clamp_needed(clock):
     assert clock.pos() == QPoint(2100, 120)
 
 
+def test_restore_position_reapplies_saved_coordinates(clock):
+    secondary = FakeScreen(QRect(1920, 0, 1920, 1080))
+    clock.config.pos_x = 2200
+    clock.config.pos_y = 160
+    clock.resize(200, 80)
+    clock._screen_for_geometry = lambda _geometry: secondary
+    clock.move(100, 100)  # Simulate Windows relocating it during display wake-up.
+
+    clock.restore_position()
+
+    assert clock.pos() == QPoint(2200, 160)
+
+
 # ---- Auto color (needs qapp to build ClockWindow) ----
 @pytest.fixture
 def clock(qapp):

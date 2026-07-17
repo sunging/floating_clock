@@ -33,8 +33,24 @@ class FloatingClockApp:
         )
         self.clock.show()
 
+        # Windows may temporarily move top-level windows while displays wake up
+        # or are re-enumerated. Restore the saved coordinates after the layout
+        # has settled; restarting this timer debounces a burst of Qt signals.
+        self._position_restore_timer = QTimer(self.app)
+        self._position_restore_timer.setSingleShot(True)
+        self._position_restore_timer.setInterval(750)
+        self._position_restore_timer.timeout.connect(self._restore_clock_position)
+        self.app.screenAdded.connect(self._on_screen_added)
+        self.app.screenRemoved.connect(self._schedule_position_restore)
+        self.app.primaryScreenChanged.connect(self._schedule_position_restore)
+        for screen in self.app.screens():
+            self._watch_screen(screen)
+        window_handle = self.clock.windowHandle()
+        if window_handle is not None:
+            window_handle.screenChanged.connect(self._schedule_position_restore)
+
         # Monitor display power state for "don't ring when the screen is off".
-        self.screen_monitor = ScreenStateMonitor()
+        self.screen_monitor = ScreenStateMonitor(on_wake=self._schedule_position_restore)
         self.app.installNativeEventFilter(self.screen_monitor)
         self.screen_monitor.start(int(self.clock.winId()))
 
@@ -110,6 +126,24 @@ class FloatingClockApp:
         if self.config.ring_when_screen_off:
             return True
         return not self.screen_monitor.is_display_off()
+
+    # ---- Display layout changes ----
+    def _watch_screen(self, screen) -> None:
+        """Watch geometry changes for one connected display."""
+        screen.geometryChanged.connect(self._schedule_position_restore)
+        screen.availableGeometryChanged.connect(self._schedule_position_restore)
+
+    def _on_screen_added(self, screen) -> None:
+        self._watch_screen(screen)
+        self._schedule_position_restore()
+
+    def _schedule_position_restore(self, *_args) -> None:
+        """Debounce display events until Windows and Qt finish updating geometry."""
+        self._position_restore_timer.start()
+
+    def _restore_clock_position(self) -> None:
+        self.clock.restore_position()
+        self.clock.update_auto_color()
 
     # ---- Settings ----
     def _open_settings(self) -> None:

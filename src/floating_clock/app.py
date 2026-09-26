@@ -142,6 +142,10 @@ class FloatingClockApp:
         self._position_restore_timer.start()
 
     def _restore_clock_position(self) -> None:
+        if self.clock.is_dragging:
+            # Wait until release has persisted the user's new position.
+            self._schedule_position_restore()
+            return
         self.clock.restore_position()
         self.clock.update_auto_color()
 

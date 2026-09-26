@@ -345,6 +345,11 @@ class ClockWindow(QWidget):
         return main + "\n" + self._format_now()
 
     # ---- Dragging (only when click-through is off) ----
+    @property
+    def is_dragging(self) -> bool:
+        """Whether a mouse press is held, including before the first movement."""
+        return self._drag_offset is not None
+
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._drag_offset = (

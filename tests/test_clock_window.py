@@ -237,8 +237,11 @@ def test_preview_flash_setting_takes_effect_while_alarm_is_visible(clock):
     assert not clock._preview_timer.isActive()
 
 
-@pytest.mark.parametrize("content", ["长内容" * 100, "W" * 120, "一行\n" * 100, "<b>纯文本</b>" * 100],
-                         ids=["chinese", "unbroken", "multiline", "plain_markup"])
+@pytest.mark.parametrize(
+    "content",
+    ["长内容" * 100, "W" * 120, "一行\n" * 100, "<b>纯文本</b>" * 100],
+    ids=["chinese", "unbroken", "multiline", "plain_markup"],
+)
 @pytest.mark.parametrize("font_size,scale", [(48, 1), (400, 3)])
 def test_long_alarm_fits_small_screen_and_can_scroll(clock, qapp, content, font_size, scale):
     area = QRect(-640, 0, 640, 480)

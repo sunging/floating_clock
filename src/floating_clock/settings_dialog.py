@@ -174,7 +174,7 @@ class SettingsDialog(QDialog):
 
         # Initialize each button's enabled state (manual color is overridden in auto mode).
         self._update_auto_color_enabled()
-        # Connect the signal after building, so init doesn't trigger a preview before widgets are ready.
+        # Connect after building, so init doesn't trigger a preview before widgets are ready.
         self._auto_color_chk.toggled.connect(self._on_auto_color_toggled)
 
         self._seconds_chk = QCheckBox("显示秒")
@@ -224,7 +224,7 @@ class SettingsDialog(QDialog):
         self._emit_preview()
 
     def _update_auto_color_enabled(self) -> None:
-        """In auto mode, disable the manual text color and enable the light/dark background color buttons."""
+        """Auto mode: disable the manual text color, enable the light/dark background colors."""
         auto = self._auto_color_chk.isChecked()
         self._color_btn.setEnabled(not auto)
         self._auto_dark_btn.setEnabled(auto)
@@ -313,7 +313,7 @@ class SettingsDialog(QDialog):
 
     # ---- Live preview ----
     def _current_preview(self) -> Config:
-        """Build a preview config from current widget values, leaving position/click-through/alarms unchanged."""
+        """Build a preview config from the widgets; position/click-through/alarms stay unchanged."""
         cfg = copy.deepcopy(self._config)
         self._apply_appearance_values(cfg)
         self._apply_alarm_popup_values(cfg)
@@ -612,7 +612,8 @@ class AlarmEditDialog(QDialog):
     def alarm(self) -> Alarm:
         """Write the edited values into the alarm passed in (enabled) and return it."""
         alarm = self._alarm
-        alarm.time = f"{self._hour_combo.currentIndex():02d}:{self._minute_combo.currentIndex():02d}"
+        hour, minute = self._hour_combo.currentIndex(), self._minute_combo.currentIndex()
+        alarm.time = f"{hour:02d}:{minute:02d}"
         alarm.label = self._label_edit.text().strip() or "闹钟"
         alarm.content = self._content_edit.toPlainText().strip()
         alarm.repeat_type = self._repeat_combo.currentData()

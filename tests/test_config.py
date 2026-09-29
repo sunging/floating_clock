@@ -1,21 +1,23 @@
 """Unit tests for config.py: pure helpers and the save/load roundtrip."""
 
 import dataclasses
-import sys
 import json
+import sys
 from pathlib import Path
-from PySide6.QtCore import QSettings
-from floating_clock import config as config_module
 
 import pytest
+from PySide6.QtCore import QSettings
 
+from floating_clock import config as config_module
 from floating_clock.alarm import REPEAT_CUSTOM, REPEAT_WEEKDAYS, Alarm
 from floating_clock.config import (
     Config,
-    config_path as original_config_path,
     _is_installed,
     _normalize_popup_layout,
     _user_base_dir,
+)
+from floating_clock.config import (
+    config_path as original_config_path,
 )
 
 

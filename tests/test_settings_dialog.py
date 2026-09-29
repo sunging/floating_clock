@@ -1,7 +1,10 @@
 """Tests for settings_dialog.py: pure helpers and the dialogs driven headlessly."""
 
 import pytest
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QDialog
 
+from floating_clock import settings_dialog as settings_module
 from floating_clock.alarm import (
     REPEAT_CUSTOM,
     REPEAT_DAILY,
@@ -9,10 +12,6 @@ from floating_clock.alarm import (
     REPEAT_WEEKDAYS,
     Alarm,
 )
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QDialog
-
-from floating_clock import settings_dialog as settings_module
 from floating_clock.config import Config
 from floating_clock.settings_dialog import (
     AlarmEditDialog,
@@ -56,7 +55,9 @@ def test_repeat_label_unknown_falls_back_to_daily():
 
 # ---- AlarmEditDialog ----
 def test_alarm_edit_dialog_prefills_and_returns_edits(qapp):
-    original = Alarm(time="07:05", label="起床", content="x", repeat_type=REPEAT_ONCE, enabled=False)
+    original = Alarm(
+        time="07:05", label="起床", content="x", repeat_type=REPEAT_ONCE, enabled=False
+    )
     dlg = AlarmEditDialog(original)
     assert dlg._hour_combo.currentText() == "07"
     assert dlg._minute_combo.currentText() == "05"

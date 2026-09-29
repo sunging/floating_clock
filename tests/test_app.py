@@ -1,16 +1,16 @@
 """Headless regression tests for display-position restoration."""
 
 import dataclasses
-
-import pytest
 from datetime import datetime
 from unittest.mock import Mock
+
+import pytest
 from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QAction, QMouseEvent
 from PySide6.QtTest import QSignalSpy, QTest
 
-from floating_clock.app import FloatingClockApp, _alarm_message
 from floating_clock.alarm import Alarm
+from floating_clock.app import FloatingClockApp, _alarm_message
 from floating_clock.config import Config
 from floating_clock.screen import ScreenStateMonitor
 from floating_clock.settings_dialog import SettingsDialog
@@ -132,7 +132,9 @@ def test_display_events_debounce_and_restore_without_drag(controller):
 
 @pytest.mark.parametrize("preference", [False, True])
 @pytest.mark.parametrize("stop_move_first", [False, True])
-def test_temporary_click_through_preserves_preference(controller, monkeypatch, preference, stop_move_first):
+def test_temporary_click_through_preserves_preference(
+    controller, monkeypatch, preference, stop_move_first
+):
     applied = []
     monkeypatch.setattr(controller.clock, "set_click_through", applied.append)
     controller._toggle_click_through(preference)

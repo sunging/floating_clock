@@ -1,6 +1,6 @@
 [project]
 name = "floating-clock"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Windows 桌面浮动时钟：大小/透明度可调、鼠标穿透、可设闹钟"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -12,7 +12,10 @@ dependencies = [
 floating-clock = "floating_clock.app:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.16.9",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -24,3 +27,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/floating_clock"]
+
+[tool.hatch.version]
+# Single source of truth: floating_clock.__version__
+path = "src/floating_clock/__init__.py"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]

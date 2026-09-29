@@ -130,7 +130,7 @@ class ClockWindow(QWidget):
 
     # ---- Auto-adapt to background color ----
     def _sample_background_luminance(self) -> Optional[float]:
-        """Grab the screen region right behind the clock and return its median perceived luminance (0-255).
+        """Return the median perceived luminance (0-255) of the screen behind the clock.
 
         The window background is transparent, so only glyph pixels are self-noise;
         downsampling then taking the median robustly ignores them. Screen grabs
@@ -174,7 +174,7 @@ class ClockWindow(QWidget):
         return self.config.auto_color_dark_bg
 
     def update_auto_color(self) -> None:
-        """Re-sample the background and update text if the color changed (called by main loop / after drag)."""
+        """Re-sample the background and restyle if the text color changed."""
         if not self.config.auto_color or self._alarm_active:
             return
         new = self._compute_auto_color()

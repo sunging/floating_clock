@@ -1,4 +1,7 @@
-"""Config dataclass and persistence (QSettings INI file under the program's config dir)."""
+"""Config dataclass and persistence (a QSettings INI file, ``config/config.ini``).
+
+Where ``config/`` lives depends on how the program runs; see ``app_dir()``.
+"""
 
 from __future__ import annotations
 
@@ -17,8 +20,8 @@ from floating_clock import sound
 from floating_clock._coerce import clamp_float, clamp_int, clamp_position, to_bool
 from floating_clock.alarm import Alarm
 
-# Config lives in a `config` subdir under the program directory, independent of
-# the working directory, so autostart (cwd is usually System32) reads the same file.
+# Config lives in a `config` subdir of app_dir(), independent of the working
+# directory, so autostart (cwd is usually System32) reads the same file.
 CONFIG_DIRNAME = "config"
 CONFIG_FILENAME = "config.ini"
 
@@ -66,14 +69,14 @@ def _user_base_dir() -> Path:
 
 
 def config_dir() -> Path:
-    """Return the config folder (config/ under the program dir), creating it if absent."""
+    """Return the config folder (``app_dir()/config``), creating it if absent."""
     directory = app_dir() / CONFIG_DIRNAME
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def config_path() -> Path:
-    """Return the absolute config file path (config/config.ini under the program dir)."""
+    """Return the absolute config file path (``app_dir()/config/config.ini``)."""
     return config_dir() / CONFIG_FILENAME
 
 

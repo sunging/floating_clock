@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import math
+import sys
 from datetime import datetime
 from statistics import median
 from typing import Callable, Optional
@@ -22,6 +22,18 @@ from floating_clock.config import (
 _GWL_EXSTYLE = -20
 _WS_EX_LAYERED = 0x00080000
 _WS_EX_TRANSPARENT = 0x00000020
+
+_FLASH_INTERVAL_MS = 450  # alarm popup text color toggle period
+_PREVIEW_DURATION_MS = 2500  # how long the settings "preview" popup stays up
+# Median background luminance (0-255) above which dark text is used in auto-color mode.
+_BRIGHT_BG_LUMINANCE = 140
+
+# Alarm popup sizing: fraction of the display it may cover, and the space
+# around the text (horizontal/vertical) taken by the text edit's padding/frame.
+_POPUP_MAX_SCREEN_FRACTION = 0.8
+_POPUP_MIN_WIDTH = 160
+_POPUP_H_PADDING = 32
+_POPUP_V_PADDING = 24
 
 
 class ClockWindow(QWidget):
@@ -70,7 +82,7 @@ class ClockWindow(QWidget):
 
         # Flashing state
         self._flash_timer = QTimer(self)
-        self._flash_timer.setInterval(450)
+        self._flash_timer.setInterval(_FLASH_INTERVAL_MS)
         self._flash_timer.timeout.connect(self._toggle_flash)
         self._flash_on = False
         self._alarm_active = False
@@ -116,9 +128,6 @@ class ClockWindow(QWidget):
             return self._auto_color_value
         return self.config.color
 
-    def _apply_color(self, color: str) -> None:
-        self._apply_label_style(color)
-
     # ---- Auto-adapt to background color ----
     def _sample_background_luminance(self) -> Optional[float]:
         """Grab the screen region right behind the clock and return its median perceived luminance (0-255).
@@ -160,7 +169,7 @@ class ClockWindow(QWidget):
         lum = self._sample_background_luminance()
         if lum is None:
             return None
-        if lum > 140:  # bright background -> use dark text
+        if lum > _BRIGHT_BG_LUMINANCE:  # bright background -> use dark text
             return self.config.auto_color_light_bg
         return self.config.auto_color_dark_bg
 
@@ -206,7 +215,7 @@ class ClockWindow(QWidget):
         if self._alarm_active:
             self._render_alarm_popup()
             return
-        self._apply_color(self._text_color())
+        self._apply_label_style(self._text_color())
         self._fit()
 
     def _fit(self) -> None:
@@ -224,31 +233,39 @@ class ClockWindow(QWidget):
         if screen is None:
             return
         area = screen.availableGeometry()
-        max_width = max(1, int(area.width() * 0.8))
-        max_height = max(1, int(area.height() * 0.8))
+        max_width = max(1, int(area.width() * _POPUP_MAX_SCREEN_FRACTION))
+        max_height = max(1, int(area.height() * _POPUP_MAX_SCREEN_FRACTION))
         button_height = self._stop_button.sizeHint().height()
         font = QFont(self._popup_font)
         metrics = QFontMetricsF(font)
         text = self._alarm_text.toPlainText()
         widest = max((metrics.horizontalAdvance(c) for c in set(text) if c != "\n"), default=1)
         # Even the largest configured font must leave room for readable glyphs.
-        scale = min(1.0, max(1, max_width - 32) / max(1, widest),
-                    max(1, max_height - button_height - 24) / max(1, metrics.height()))
+        scale = min(
+            1.0,
+            max(1, max_width - _POPUP_H_PADDING) / max(1, widest),
+            max(1, max_height - button_height - _POPUP_V_PADDING) / max(1, metrics.height()),
+        )
         if scale < 1:
             font.setPointSizeF(max(1.0, font.pointSizeF() * scale))
             metrics = QFontMetricsF(font)
         if self._alarm_text.font() != font:
             self._alarm_text.setFont(font)
-        natural_width = max((metrics.horizontalAdvance(line) for line in text.splitlines()), default=0)
-        width = min(max_width, max(160, math.ceil(natural_width) + 32))
+        natural_width = max(
+            (metrics.horizontalAdvance(line) for line in text.splitlines()), default=0
+        )
+        width = min(max_width, max(_POPUP_MIN_WIDTH, math.ceil(natural_width) + _POPUP_H_PADDING))
         document = QTextDocument()
         document.setDefaultFont(font)
         option = document.defaultTextOption()
         option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         document.setDefaultTextOption(option)
         document.setPlainText(text)
-        document.setTextWidth(max(1, width - 32))
-        height = min(max_height, math.ceil(document.size().height()) + button_height + 24)
+        document.setTextWidth(max(1, width - _POPUP_H_PADDING))
+        height = min(
+            max_height,
+            math.ceil(document.size().height()) + button_height + _POPUP_V_PADDING,
+        )
         self.resize(width, height)
         self._alarm_panel.setGeometry(self.rect())
         self.move(_clamped_top_left(self._window_geometry(), area))
@@ -378,7 +395,7 @@ class ClockWindow(QWidget):
         """Briefly show the alarm popup effect without playing sound or changing config."""
         self.start_flashing(label, content)
         self._stop_button.setText("关闭预览")
-        self._preview_timer.start(2500)
+        self._preview_timer.start(_PREVIEW_DURATION_MS)
 
     def stop_flashing(self) -> None:
         self._preview_timer.stop()

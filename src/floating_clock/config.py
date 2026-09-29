@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import math
 import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
 from PySide6.QtCore import QSettings
 
@@ -105,8 +108,8 @@ class Config:
     def load(cls) -> "Config":
         s = _settings()
         cfg = cls()
-        cfg.font_size = int(s.value("font_size", cfg.font_size))
-        cfg.opacity = float(s.value("opacity", cfg.opacity))
+        cfg.font_size = _clamp_int(s.value("font_size", cfg.font_size), 8, 400, cfg.font_size)
+        cfg.opacity = _clamp_float(s.value("opacity", cfg.opacity), 0.1, 1.0, cfg.opacity)
         cfg.color = str(s.value("color", cfg.color))
         cfg.auto_color = _to_bool(s.value("auto_color", cfg.auto_color))
         cfg.auto_color_dark_bg = str(
@@ -167,14 +170,28 @@ class Config:
 
         px = s.value("pos_x", None)
         py = s.value("pos_y", None)
-        cfg.pos_x = int(px) if px not in (None, "") else None
-        cfg.pos_y = int(py) if py not in (None, "") else None
+        cfg.pos_x = _position(px)
+        cfg.pos_y = _position(py)
 
         raw = s.value("alarms", "[]")
         try:
-            cfg.alarms = [Alarm.from_dict(d) for d in json.loads(raw)]
-        except (json.JSONDecodeError, TypeError):
-            cfg.alarms = []
+            entries = json.loads(raw)
+            if not isinstance(entries, list):
+                raise ValueError("Alarms must be a list")
+        except (ValueError, TypeError):
+            logging.getLogger(__name__).warning("Invalid alarm list; using an empty list")
+            entries = []
+        seen_ids = set()
+        for entry in entries:
+            try:
+                alarm = Alarm.from_dict(entry)
+            except (ValueError, TypeError, OverflowError):
+                logging.getLogger(__name__).warning("Skipping invalid alarm entry")
+                continue
+            if alarm.id in seen_ids:
+                alarm.id = uuid4().hex
+            seen_ids.add(alarm.id)
+            cfg.alarms.append(alarm)
         return cfg
 
     def save(self) -> None:
@@ -230,9 +247,28 @@ def _clamp_float(value, low: float, high: float, default: float) -> float:
     """Read a numeric setting and clamp it to a range."""
     try:
         number = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        return default
+    if not math.isfinite(number):
         return default
     return max(low, min(high, number))
+
+
+def _clamp_int(value, low: int, high: int, default: int) -> int:
+    """Read an integer setting without allowing malformed data to stop startup."""
+    try:
+        return max(low, min(high, int(value)))
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _position(value) -> Optional[int]:
+    """Ignore invalid or implausible coordinates before passing them to Qt."""
+    try:
+        position = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return position if -1_000_000 <= position <= 1_000_000 else None
 
 
 def _normalize_sound_mode(value) -> str:

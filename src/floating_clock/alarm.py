@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Callable, Optional
+from uuid import uuid4
 
 REPEAT_ONCE = "once"
 REPEAT_DAILY = "daily"
@@ -40,6 +41,7 @@ class Alarm:
     enabled: bool = True
     repeat_type: str = REPEAT_DAILY
     repeat_weekdays: list[int] = field(default_factory=list)
+    id: str = field(default_factory=lambda: uuid4().hex, compare=False)
 
     def to_dict(self) -> dict:
         data = asdict(self)
@@ -49,6 +51,20 @@ class Alarm:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Alarm":
+        if not isinstance(data, dict):
+            raise ValueError("Alarm must be an object")
+        time = str(data.get("time", "08:00"))
+        parts = time.split(":")
+        if (
+            len(parts) != 2
+            or not all(p.isascii() and p.isdigit() for p in parts)
+            or any(len(p) != 2 for p in parts)
+            or not (0 <= int(parts[0]) <= 23 and 0 <= int(parts[1]) <= 59)
+        ):
+            raise ValueError("Invalid alarm time")
+        alarm_id = data.get("id")
+        if not isinstance(alarm_id, str) or not alarm_id.strip():
+            alarm_id = uuid4().hex
         repeat_type = data.get("repeat_type")
         if repeat_type is None:
             repeat_type = (
@@ -58,7 +74,7 @@ class Alarm:
             )
 
         return cls(
-            time=str(data.get("time", "08:00")),
+            time=time,
             label=str(data.get("label", "闹钟")),
             content=str(data.get("content", "")),
             enabled=_to_bool(data.get("enabled", True)),
@@ -66,6 +82,7 @@ class Alarm:
             repeat_weekdays=_normalize_weekdays(
                 data.get("repeat_weekdays", [])
             ),
+            id=alarm_id,
         )
 
     def __post_init__(self) -> None:
@@ -132,13 +149,13 @@ def _normalize_repeat_type(value: str) -> str:
 
 def _normalize_weekdays(value) -> list[int]:
     """Normalize the weekday list, dropping invalid items and dedup-sorting."""
-    if value is None:
+    if not isinstance(value, (list, tuple, set)):
         return []
     days: set[int] = set()
     for item in value:
         try:
             day = int(item)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if 0 <= day <= 6:
             days.add(day)

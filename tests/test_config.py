@@ -1,13 +1,17 @@
 """Unit tests for config.py: pure helpers and the save/load roundtrip."""
 
 import sys
+import json
 from pathlib import Path
+from PySide6.QtCore import QSettings
+from floating_clock import config as config_module
 
 import pytest
 
 from floating_clock.alarm import REPEAT_CUSTOM, REPEAT_WEEKDAYS, Alarm
 from floating_clock.config import (
     Config,
+    config_path as original_config_path,
     _clamp_float,
     _is_installed,
     _normalize_popup_layout,
@@ -15,6 +19,56 @@ from floating_clock.config import (
     _to_bool,
     _user_base_dir,
 )
+
+
+def test_config_fixture_protects_imported_path_alias(temp_config_dir):
+    # A pre-imported function must also stay away from the real user directory.
+    assert Path(temp_config_dir) in original_config_path().parents
+    assert config_module.config_path().parent == Path(temp_config_dir)
+
+
+@pytest.mark.parametrize("key,value,expected", [
+    ("font_size", "bad", 48), ("font_size", "inf", 48),
+    ("font_size", -1, 8), ("font_size", 10000, 400),
+    ("opacity", "bad", 0.75), ("opacity", "nan", 0.75),
+    ("opacity", "inf", 0.75), ("opacity", "-inf", 0.75),
+    ("opacity", -1, 0.1), ("opacity", 2, 1.0),
+    ("pos_x", "bad", None), ("pos_y", "inf", None),
+    ("pos_x", "999999999999999999999999", None), ("pos_x", -1920, -1920),
+    ("alarm_popup_font_scale", "nan", 1.0),
+    ("alarm_popup_background_opacity", "inf", 0.65),
+])
+def test_invalid_numeric_settings_are_safe(temp_config_dir, key, value, expected):
+    settings = QSettings(str(config_module.config_path()), QSettings.IniFormat)
+    settings.setValue(key, value)
+    settings.sync()
+    assert getattr(Config.load(), key) == expected
+
+
+@pytest.mark.parametrize("raw", ["bad", "null", "{}", "42", '"text"', "[null]"])
+def test_invalid_alarm_list_does_not_stop_loading(temp_config_dir, raw):
+    settings = QSettings(str(config_module.config_path()), QSettings.IniFormat)
+    settings.setValue("alarms", raw)
+    settings.sync()
+    assert Config.load().alarms == []
+    assert settings.value("alarms") == raw  # Loading does not overwrite the original.
+
+
+def test_load_preserves_valid_alarms_and_migrates_ids(temp_config_dir):
+    settings = QSettings(str(config_module.config_path()), QSettings.IniFormat)
+    entries = [{"time": "07:30", "repeat_daily": False}, None, "bad",
+               {"time": "25:00"}, {"time": "08:00", "repeat_weekdays": 123},
+               {"time": "09:00", "id": "duplicate"}, {"time": "10:00", "id": "duplicate"}]
+    settings.setValue("alarms", json.dumps(entries))
+    settings.sync()
+    config = Config.load()
+    assert [a.time for a in config.alarms] == ["07:30", "08:00", "09:00", "10:00"]
+    assert config.alarms[0].is_once()
+    assert config.alarms[1].repeat_weekdays == []
+    ids = [a.id for a in config.alarms]
+    assert len(set(ids)) == 4
+    config.save()
+    assert [a.id for a in Config.load().alarms] == ids
 
 
 # ---- Pure helpers ----

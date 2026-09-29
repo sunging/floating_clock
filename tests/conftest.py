@@ -27,10 +27,12 @@ def qapp():
     yield app
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def temp_config_dir(monkeypatch):
     """Redirect the config file to a temp dir, isolating the real config/config.ini."""
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "config.ini"
+        # Also protect callers that imported config_path before it was patched.
+        monkeypatch.setattr("floating_clock.config.app_dir", lambda: Path(tmpdir))
         monkeypatch.setattr("floating_clock.config.config_path", lambda: path)
         yield tmpdir

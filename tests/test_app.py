@@ -1,5 +1,7 @@
 """Headless regression tests for display-position restoration."""
 
+import dataclasses
+
 import pytest
 from datetime import datetime
 from unittest.mock import Mock
@@ -7,7 +9,7 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QAction, QMouseEvent
 from PySide6.QtTest import QSignalSpy, QTest
 
-from floating_clock.app import FloatingClockApp
+from floating_clock.app import FloatingClockApp, _alarm_message
 from floating_clock.alarm import Alarm
 from floating_clock.config import Config
 from floating_clock.screen import ScreenStateMonitor
@@ -158,7 +160,7 @@ def test_temporary_click_through_preserves_preference(controller, monkeypatch, p
 def test_changing_preference_while_ringing_keeps_popup_interactive(controller, monkeypatch):
     applied = []
     monkeypatch.setattr(controller.clock, "set_click_through", applied.append)
-    controller._on_alarm(Alarm())
+    controller._on_alarm([Alarm()])
     controller._toggle_click_through(True)
     assert applied[-1] is False
     assert Config.load().click_through is True
@@ -226,7 +228,7 @@ def test_settings_keep_explicit_alarm_edits(controller, monkeypatch, edit_kind):
 
 def test_popup_stop_button_stops_alarm_and_restores_preference(controller, qapp):
     controller.config.click_through = True
-    controller._on_alarm(Alarm(content="Long text " * 200))
+    controller._on_alarm([Alarm(content="Long text " * 200)])
     qapp.processEvents()
     QTest.mouseClick(controller.clock._stop_button, Qt.LeftButton)
     assert not controller._ringing
@@ -237,7 +239,8 @@ def test_popup_stop_button_stops_alarm_and_restores_preference(controller, qapp)
 def test_settings_consumes_only_the_matching_alarm_id(controller, monkeypatch):
     alarms = [Alarm(time="08:00", repeat_type="once") for _ in range(2)]
     controller.config.alarms = alarms
-    controller.alarm_manager.set_alarms(alarms)
+    # Same schedule, but only the first is armed: the dialog must match by id.
+    controller.alarm_manager.set_alarms([alarms[0], dataclasses.replace(alarms[1], enabled=False)])
     def edit(dialog):
         controller.alarm_manager.check(datetime(2026, 9, 26, 8, 0))
         assert dialog._alarm_list.item(0).checkState() == Qt.Unchecked
@@ -261,3 +264,25 @@ def test_drag_in_move_mode_saves_original_preference(controller):
     assert not controller._move_action.isChecked()
     assert Config.load().click_through is True
     assert (Config.load().pos_x, Config.load().pos_y) == (150, 150)
+
+
+def test_alarms_due_together_share_one_popup_and_are_all_consumed(controller, monkeypatch):
+    shown = []
+    monkeypatch.setattr(controller.clock, "start_flashing", lambda *a: shown.append(a))
+    alarms = [
+        Alarm(time="08:00", label="A", content="a body", repeat_type="once"),
+        Alarm(time="08:00", label="B", repeat_type="once"),
+        Alarm(time="08:00", label="C", repeat_type="daily"),
+    ]
+    controller.config.alarms = alarms
+    controller.alarm_manager.set_alarms(alarms)
+    controller.alarm_manager.check(datetime(2026, 9, 26, 8, 0))
+
+    assert shown == [("3 个闹钟", "A\na body\n\nB\n\nC")]
+    assert controller._ringing
+    assert [a.enabled for a in Config.load().alarms] == [False, False, True]
+    controller._stop_alarm()
+
+
+def test_single_alarm_message_is_unchanged():
+    assert _alarm_message([Alarm(label="L", content="C")]) == ("L", "C")

@@ -117,7 +117,7 @@ class Alarm:
 class AlarmManager:
     """Holds the alarm list, matches per minute, and fires via a callback."""
 
-    def __init__(self, on_trigger: Callable[[Alarm], None]):
+    def __init__(self, on_trigger: Callable[[list[Alarm]], None]):
         self._on_trigger = on_trigger
         self.alarms: list[Alarm] = []
         # Track the last fired minute key to avoid re-firing within a minute.
@@ -127,7 +127,7 @@ class AlarmManager:
         self.alarms = list(alarms)
 
     def check(self, now: Optional[datetime] = None) -> None:
-        """Call once per tick; fires the callback when an enabled alarm hits."""
+        """Call once per tick; fires the callback with every enabled alarm due this minute."""
         now = now or datetime.now()
         minute_key = now.strftime("%Y-%m-%d %H:%M")
 
@@ -135,14 +135,15 @@ class AlarmManager:
         if minute_key == self._last_fired_minute:
             return
 
-        for alarm in self.alarms:
-            if alarm.matches(now):
-                self._last_fired_minute = minute_key
-                if alarm.is_once():
-                    alarm.enabled = False
-                self._on_trigger(alarm)
-                # Only fire one alarm per minute to avoid overlapping sounds.
-                break
+        due = [alarm for alarm in self.alarms if alarm.matches(now)]
+        if not due:
+            return
+        self._last_fired_minute = minute_key
+        for alarm in due:
+            if alarm.is_once():
+                alarm.enabled = False
+        # Fire all due alarms together (one sound, one popup) so none is lost.
+        self._on_trigger(due)
 
 
 def _normalize_repeat_type(value: str) -> str:

@@ -119,15 +119,19 @@ def test_manager_once_disables_after_fire():
     mgr = AlarmManager(on_trigger=fired.append)
     mgr.set_alarms([once])
     mgr.check(MON_0800)
-    assert fired == [once]
+    assert fired == [[once]]
     assert once.enabled is False
 
 
-def test_manager_only_first_match_per_minute():
+def test_manager_fires_all_matches_together():
     fired = []
     a = Alarm(time="08:00", label="A", repeat_type=REPEAT_DAILY)
-    b = Alarm(time="08:00", label="B", repeat_type=REPEAT_DAILY)
+    b = Alarm(time="08:00", label="B", repeat_type=REPEAT_ONCE)
+    c = Alarm(time="08:01", label="C", repeat_type=REPEAT_DAILY)
     mgr = AlarmManager(on_trigger=fired.append)
-    mgr.set_alarms([a, b])
+    mgr.set_alarms([a, b, c])
     mgr.check(MON_0800)
-    assert fired == [a]  # only the first match per minute fires
+    assert fired == [[a, b]]  # one callback with every alarm due this minute
+    assert b.enabled is False  # every one-shot in the batch is consumed
+    mgr.check(MON_0800)
+    assert len(fired) == 1

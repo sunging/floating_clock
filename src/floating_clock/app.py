@@ -228,7 +228,8 @@ class FloatingClockApp:
             self._move_action.setChecked(False)
 
     # ---- Alarm ----
-    def _on_alarm(self, alarm: Alarm) -> None:
+    def _on_alarm(self, alarms: list[Alarm]) -> None:
+        title, content = _alarm_message(alarms)
         self._ringing = True
         self._stop_action.setEnabled(True)
 
@@ -237,7 +238,7 @@ class FloatingClockApp:
         self.clock.show()
         self.clock.raise_()
         self.clock.activateWindow()
-        self.clock.start_flashing(alarm.label, alarm.content)
+        self.clock.start_flashing(title, content)
 
         sound.play(
             self.config.sound_mode,
@@ -245,17 +246,14 @@ class FloatingClockApp:
             self.config.sound_custom_path,
             loop=True,
         )
-        self.tray.showMessage(
-            alarm.label,
-            alarm.content or alarm.label,
-            self._icon,
-            10000,
-        )
+        self.tray.showMessage(title, content or title, self._icon, 10000)
 
-        # A one-shot alarm is now disabled after firing; persist the state.
-        if alarm.is_once():
+        # One-shot alarms are now disabled after firing; persist the state.
+        fired_once = [alarm for alarm in alarms if alarm.is_once()]
+        if fired_once:
             if self._settings_dialog is not None:
-                self._settings_dialog.mark_alarm_fired(alarm)
+                for alarm in fired_once:
+                    self._settings_dialog.mark_alarm_fired(alarm)
             self.config.alarms = self.alarm_manager.alarms
             self.config.save()
 
@@ -277,6 +275,14 @@ class FloatingClockApp:
         sound.stop()
         self.tray.hide()
         self.app.quit()
+
+
+def _alarm_message(alarms: list[Alarm]) -> tuple[str, str]:
+    """Return the popup (title, content) for alarms that fired in the same minute."""
+    if len(alarms) == 1:
+        return alarms[0].label, alarms[0].content
+    parts = [f"{a.label}\n{a.content}" if a.content else a.label for a in alarms]
+    return f"{len(alarms)} 个闹钟", "\n\n".join(parts)
 
 
 def _make_icon() -> QIcon:

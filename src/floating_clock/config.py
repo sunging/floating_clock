@@ -8,7 +8,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Optional
 from uuid import uuid4
 
 from PySide6.QtCore import QSettings
@@ -113,130 +113,23 @@ class Config:
     # ---- Persistence ----
     @classmethod
     def load(cls) -> "Config":
+        """Read the config file; missing or malformed values fall back to defaults."""
         s = _settings()
         cfg = cls()
-        cfg.font_size = clamp_int(s.value("font_size", cfg.font_size), 8, 400, cfg.font_size)
-        cfg.opacity = clamp_float(s.value("opacity", cfg.opacity), 0.1, 1.0, cfg.opacity)
-        cfg.color = str(s.value("color", cfg.color))
-        cfg.auto_color = to_bool(s.value("auto_color", cfg.auto_color))
-        cfg.auto_color_dark_bg = str(
-            s.value("auto_color_dark_bg", cfg.auto_color_dark_bg)
-        )
-        cfg.auto_color_light_bg = str(
-            s.value("auto_color_light_bg", cfg.auto_color_light_bg)
-        )
-        cfg.show_seconds = to_bool(s.value("show_seconds", cfg.show_seconds))
-        cfg.show_date = to_bool(s.value("show_date", cfg.show_date))
-        cfg.click_through = to_bool(s.value("click_through", cfg.click_through))
-        cfg.start_on_boot = to_bool(s.value("start_on_boot", cfg.start_on_boot))
-        cfg.sound_mode = sound.normalize_mode(
-            s.value("sound_mode", cfg.sound_mode)
-        )
-        cfg.sound_system_alias = str(
-            s.value("sound_system_alias", cfg.sound_system_alias)
-        )
-        cfg.sound_custom_path = str(
-            s.value("sound_custom_path", cfg.sound_custom_path)
-        )
-        cfg.ring_when_screen_off = to_bool(
-            s.value("ring_when_screen_off", cfg.ring_when_screen_off)
-        )
-        cfg.alarm_popup_text_color = str(
-            s.value("alarm_popup_text_color", cfg.alarm_popup_text_color)
-        )
-        cfg.alarm_popup_background_color = str(
-            s.value(
-                "alarm_popup_background_color",
-                cfg.alarm_popup_background_color,
-            )
-        )
-        cfg.alarm_popup_background_opacity = clamp_float(
-            s.value(
-                "alarm_popup_background_opacity",
-                cfg.alarm_popup_background_opacity,
-            ),
-            0.0,
-            1.0,
-            cfg.alarm_popup_background_opacity,
-        )
-        cfg.alarm_popup_flash_enabled = to_bool(
-            s.value(
-                "alarm_popup_flash_enabled",
-                cfg.alarm_popup_flash_enabled,
-            )
-        )
-        cfg.alarm_popup_font_scale = clamp_float(
-            s.value("alarm_popup_font_scale", cfg.alarm_popup_font_scale),
-            0.5,
-            3.0,
-            cfg.alarm_popup_font_scale,
-        )
-        cfg.alarm_popup_layout = _normalize_popup_layout(
-            s.value("alarm_popup_layout", cfg.alarm_popup_layout)
-        )
-
-        px = s.value("pos_x", None)
-        py = s.value("pos_y", None)
-        cfg.pos_x = clamp_position(px)
-        cfg.pos_y = clamp_position(py)
-
-        raw = s.value("alarms", "[]")
-        try:
-            entries = json.loads(raw)
-            if not isinstance(entries, list):
-                raise ValueError("Alarms must be a list")
-        except (ValueError, TypeError):
-            logging.getLogger(__name__).warning("Invalid alarm list; using an empty list")
-            entries = []
-        seen_ids = set()
-        for entry in entries:
-            try:
-                alarm = Alarm.from_dict(entry)
-            except (ValueError, TypeError, OverflowError):
-                logging.getLogger(__name__).warning("Skipping invalid alarm entry")
-                continue
-            if alarm.id in seen_ids:
-                alarm.id = uuid4().hex
-            seen_ids.add(alarm.id)
-            cfg.alarms.append(alarm)
+        for name, read in _READERS.items():
+            default = getattr(cfg, name)
+            setattr(cfg, name, read(s.value(name, default), default))
+        cfg.alarms = _load_alarms(s.value("alarms", "[]"))
         return cfg
 
     def save(self) -> None:
+        """Write every setting to the config file (values are normalized on the way out)."""
         s = _settings()
-        s.setValue("font_size", int(self.font_size))
-        s.setValue("opacity", float(self.opacity))
-        s.setValue("color", str(self.color))
-        s.setValue("auto_color", bool(self.auto_color))
-        s.setValue("auto_color_dark_bg", str(self.auto_color_dark_bg))
-        s.setValue("auto_color_light_bg", str(self.auto_color_light_bg))
-        s.setValue("show_seconds", bool(self.show_seconds))
-        s.setValue("show_date", bool(self.show_date))
-        s.setValue("click_through", bool(self.click_through))
-        s.setValue("start_on_boot", bool(self.start_on_boot))
-        s.setValue("sound_mode", sound.normalize_mode(self.sound_mode))
-        s.setValue("sound_system_alias", str(self.sound_system_alias))
-        s.setValue("sound_custom_path", str(self.sound_custom_path))
-        s.setValue("ring_when_screen_off", bool(self.ring_when_screen_off))
-        s.setValue("pos_x", "" if self.pos_x is None else int(self.pos_x))
-        s.setValue("pos_y", "" if self.pos_y is None else int(self.pos_y))
-        s.setValue("alarm_popup_text_color", str(self.alarm_popup_text_color))
-        s.setValue(
-            "alarm_popup_background_color",
-            str(self.alarm_popup_background_color),
-        )
-        s.setValue(
-            "alarm_popup_background_opacity",
-            float(self.alarm_popup_background_opacity),
-        )
-        s.setValue(
-            "alarm_popup_flash_enabled",
-            bool(self.alarm_popup_flash_enabled),
-        )
-        s.setValue("alarm_popup_font_scale", float(self.alarm_popup_font_scale))
-        s.setValue(
-            "alarm_popup_layout",
-            _normalize_popup_layout(self.alarm_popup_layout),
-        )
+        defaults = Config()
+        for name, read in _READERS.items():
+            value = read(getattr(self, name), getattr(defaults, name))
+            # QSettings can't store None; an empty string reads back as None.
+            s.setValue(name, "" if value is None else value)
         s.setValue("alarms", json.dumps([a.to_dict() for a in self.alarms]))
         s.sync()
 
@@ -245,3 +138,81 @@ def _normalize_popup_layout(value) -> str:
     """Coerce the alarm popup layout setting; invalid falls back to label-above-time."""
     value = str(value or POPUP_LAYOUT_LABEL_TIME)
     return value if value in POPUP_LAYOUTS else POPUP_LAYOUT_LABEL_TIME
+
+
+# ---- Field table ----
+# Each scalar Config field maps to a reader ``(raw, default) -> value`` that
+# coerces a raw QSettings value (often a string) to the field's type. The INI
+# key is the field name. ``alarms`` is stored separately as JSON.
+_Reader = Callable[[Any, Any], Any]
+
+
+def _as_str(raw, _default) -> str:
+    return str(raw)
+
+
+def _as_bool(raw, _default) -> bool:
+    return to_bool(raw)
+
+
+def _int_in(low: int, high: int) -> _Reader:
+    return lambda raw, default: clamp_int(raw, low, high, default)
+
+
+def _float_in(low: float, high: float) -> _Reader:
+    return lambda raw, default: clamp_float(raw, low, high, default)
+
+
+def _as_position(raw, _default) -> Optional[int]:
+    return clamp_position(raw)
+
+
+_READERS: dict[str, _Reader] = {
+    "font_size": _int_in(8, 400),
+    "opacity": _float_in(0.1, 1.0),
+    "color": _as_str,
+    "auto_color": _as_bool,
+    "auto_color_dark_bg": _as_str,
+    "auto_color_light_bg": _as_str,
+    "show_seconds": _as_bool,
+    "show_date": _as_bool,
+    "click_through": _as_bool,
+    "start_on_boot": _as_bool,
+    "sound_mode": lambda raw, _default: sound.normalize_mode(raw),
+    "sound_system_alias": _as_str,
+    "sound_custom_path": _as_str,
+    "ring_when_screen_off": _as_bool,
+    "pos_x": _as_position,
+    "pos_y": _as_position,
+    "alarm_popup_text_color": _as_str,
+    "alarm_popup_background_color": _as_str,
+    "alarm_popup_background_opacity": _float_in(0.0, 1.0),
+    "alarm_popup_flash_enabled": _as_bool,
+    "alarm_popup_font_scale": _float_in(0.5, 3.0),
+    "alarm_popup_layout": lambda raw, _default: _normalize_popup_layout(raw),
+}
+
+
+def _load_alarms(raw) -> list[Alarm]:
+    """Parse the alarm JSON list, skipping invalid entries and fixing duplicate ids."""
+    log = logging.getLogger(__name__)
+    try:
+        entries = json.loads(raw)
+        if not isinstance(entries, list):
+            raise ValueError("Alarms must be a list")
+    except (ValueError, TypeError):
+        log.warning("Invalid alarm list; using an empty list")
+        return []
+    alarms: list[Alarm] = []
+    seen_ids = set()
+    for entry in entries:
+        try:
+            alarm = Alarm.from_dict(entry)
+        except (ValueError, TypeError, OverflowError):
+            log.warning("Skipping invalid alarm entry")
+            continue
+        if alarm.id in seen_ids:
+            alarm.id = uuid4().hex
+        seen_ids.add(alarm.id)
+        alarms.append(alarm)
+    return alarms

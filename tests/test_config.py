@@ -1,5 +1,6 @@
 """Unit tests for config.py: pure helpers and the save/load roundtrip."""
 
+import dataclasses
 import sys
 import json
 from pathlib import Path
@@ -164,3 +165,35 @@ def test_load_empty_returns_defaults(temp_config_dir):
     assert cfg.auto_color is defaults.auto_color
     assert cfg.pos_x is None
     assert cfg.alarms == []
+
+
+def test_every_field_is_persisted():
+    # Guard: a new Config field must get a reader, or it would silently not be saved.
+    names = {f.name for f in dataclasses.fields(Config)}
+    assert names == set(config_module._READERS) | {"alarms"}
+
+
+def test_every_field_roundtrips(temp_config_dir):
+    cfg = Config(
+        font_size=99, opacity=0.33, color="#010203", auto_color=True,
+        auto_color_dark_bg="#AAAAAA", auto_color_light_bg="#BBBBBB",
+        show_seconds=False, show_date=True, click_through=False, start_on_boot=True,
+        sound_mode="silent", sound_system_alias="SystemExit", sound_custom_path="x.wav",
+        ring_when_screen_off=True, pos_x=-5, pos_y=7,
+        alarm_popup_text_color="#CCCCCC", alarm_popup_background_color="#DDDDDD",
+        alarm_popup_background_opacity=0.2, alarm_popup_flash_enabled=False,
+        alarm_popup_font_scale=2.5, alarm_popup_layout="label_only",
+        alarms=[Alarm(time="06:00", id="a1")],
+    )
+    # Every field differs from its default, so a lost field can't pass by accident.
+    defaults = Config()
+    for f in dataclasses.fields(Config):
+        assert getattr(cfg, f.name) != getattr(defaults, f.name), f.name
+    cfg.save()
+    assert Config.load() == cfg
+
+
+def test_none_position_roundtrips(temp_config_dir):
+    Config(pos_x=None, pos_y=None).save()
+    loaded = Config.load()
+    assert (loaded.pos_x, loaded.pos_y) == (None, None)

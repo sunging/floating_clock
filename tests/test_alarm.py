@@ -13,7 +13,6 @@ from floating_clock.alarm import (
     AlarmManager,
     _normalize_repeat_type,
     _normalize_weekdays,
-    _to_bool,
 )
 
 # Fixed time anchors, to avoid depending on the current system time.
@@ -102,25 +101,6 @@ def test_normalize_repeat_type():
     assert _normalize_repeat_type(REPEAT_WEEKDAYS) == REPEAT_WEEKDAYS
     assert _normalize_repeat_type("nonsense") == REPEAT_DAILY
     assert _normalize_repeat_type("") == REPEAT_DAILY
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (True, True),
-        (False, False),
-        ("true", True),
-        ("TRUE", True),
-        ("1", True),
-        ("yes", True),
-        ("on", True),
-        ("0", False),
-        ("false", False),
-        ("", False),
-    ],
-)
-def test_to_bool(value, expected):
-    assert _to_bool(value) is expected
 
 
 # ---- AlarmManager.check ----

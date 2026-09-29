@@ -41,7 +41,12 @@ from floating_clock.alarm import (
     WEEKDAY_NAMES,
     Alarm,
 )
-from floating_clock.config import Config
+from floating_clock.config import (
+    POPUP_LAYOUT_LABEL_ONLY,
+    POPUP_LAYOUT_LABEL_TIME,
+    POPUP_LAYOUT_TIME_LABEL,
+    Config,
+)
 
 
 class SettingsDialog(QDialog):
@@ -280,9 +285,9 @@ class SettingsDialog(QDialog):
         form.addRow("字号倍率", self._alarm_font_scale_spin)
 
         self._alarm_layout_combo = QComboBox()
-        self._alarm_layout_combo.addItem("名称/内容在上，时间在下", "label_time")
-        self._alarm_layout_combo.addItem("时间在上，名称/内容在下", "time_label")
-        self._alarm_layout_combo.addItem("仅显示名称/内容", "label_only")
+        self._alarm_layout_combo.addItem("名称/内容在上，时间在下", POPUP_LAYOUT_LABEL_TIME)
+        self._alarm_layout_combo.addItem("时间在上，名称/内容在下", POPUP_LAYOUT_TIME_LABEL)
+        self._alarm_layout_combo.addItem("仅显示名称/内容", POPUP_LAYOUT_LABEL_ONLY)
         idx = self._alarm_layout_combo.findData(
             self._config.alarm_popup_layout
         )

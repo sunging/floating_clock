@@ -12,7 +12,11 @@ from PySide6.QtCore import QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QGuiApplication, QTextDocument, QTextOption
 from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
-from floating_clock.config import Config
+from floating_clock.config import (
+    POPUP_LAYOUT_LABEL_ONLY,
+    POPUP_LAYOUT_TIME_LABEL,
+    Config,
+)
 
 # Win32 constants (Windows only)
 _GWL_EXSTYLE = -20
@@ -434,9 +438,9 @@ class ClockWindow(QWidget):
             main = f"{title}\n{content}"
 
         layout = self.config.alarm_popup_layout
-        if layout == "label_only":
+        if layout == POPUP_LAYOUT_LABEL_ONLY:
             return main
-        if layout == "time_label":
+        if layout == POPUP_LAYOUT_TIME_LABEL:
             return self._format_now() + "\n" + main
         return main + "\n" + self._format_now()
 

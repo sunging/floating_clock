@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Callable, Optional
 from uuid import uuid4
 
+from floating_clock._coerce import to_bool
+
 REPEAT_ONCE = "once"
 REPEAT_DAILY = "daily"
 REPEAT_WEEKDAYS = "weekdays"
@@ -69,7 +71,7 @@ class Alarm:
         if repeat_type is None:
             repeat_type = (
                 REPEAT_DAILY
-                if _to_bool(data.get("repeat_daily", True))
+                if to_bool(data.get("repeat_daily", True))
                 else REPEAT_ONCE
             )
 
@@ -77,7 +79,7 @@ class Alarm:
             time=time,
             label=str(data.get("label", "闹钟")),
             content=str(data.get("content", "")),
-            enabled=_to_bool(data.get("enabled", True)),
+            enabled=to_bool(data.get("enabled", True)),
             repeat_type=_normalize_repeat_type(repeat_type),
             repeat_weekdays=_normalize_weekdays(
                 data.get("repeat_weekdays", [])
@@ -160,12 +162,3 @@ def _normalize_weekdays(value) -> list[int]:
         if 0 <= day <= 6:
             days.add(day)
     return sorted(days)
-
-
-def _to_bool(value) -> bool:
-    """Tolerate string booleans that may appear in legacy JSON."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)

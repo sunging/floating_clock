@@ -12,11 +12,8 @@ from floating_clock.alarm import REPEAT_CUSTOM, REPEAT_WEEKDAYS, Alarm
 from floating_clock.config import (
     Config,
     config_path as original_config_path,
-    _clamp_float,
     _is_installed,
     _normalize_popup_layout,
-    _normalize_sound_mode,
-    _to_bool,
     _user_base_dir,
 )
 
@@ -72,30 +69,6 @@ def test_load_preserves_valid_alarms_and_migrates_ids(temp_config_dir):
 
 
 # ---- Pure helpers ----
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        (True, True),
-        ("true", True),
-        ("1", True),
-        ("on", True),
-        ("false", False),
-        ("0", False),
-        ("", False),
-    ],
-)
-def test_to_bool(value, expected):
-    assert _to_bool(value) is expected
-
-
-def test_clamp_float():
-    assert _clamp_float(0.5, 0.0, 1.0, 0.75) == 0.5
-    assert _clamp_float(1.5, 0.0, 1.0, 0.75) == 1.0   # clamp to upper bound
-    assert _clamp_float(-1, 0.0, 1.0, 0.75) == 0.0    # clamp to lower bound
-    assert _clamp_float("bad", 0.0, 1.0, 0.75) == 0.75  # invalid -> default
-    assert _clamp_float(None, 0.0, 1.0, 0.75) == 0.75
-
-
 def test_is_installed():
     # Under site-packages / dist-packages counts as installed.
     assert _is_installed(
@@ -118,14 +91,6 @@ def test_user_base_dir_xdg(monkeypatch):
     monkeypatch.setattr(sys, "platform", "linux")
     monkeypatch.setenv("XDG_CONFIG_HOME", "/home/me/.config")
     assert _user_base_dir() == Path("/home/me/.config/floating_clock")
-
-
-def test_normalize_sound_mode():
-    assert _normalize_sound_mode("silent") == "silent"
-    assert _normalize_sound_mode("system") == "system"
-    assert _normalize_sound_mode("custom") == "custom"
-    assert _normalize_sound_mode("nonsense") == "system"
-    assert _normalize_sound_mode(None) == "system"
 
 
 def test_normalize_popup_layout():

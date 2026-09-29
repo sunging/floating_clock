@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import sys
 from dataclasses import dataclass, field
@@ -14,12 +13,20 @@ from uuid import uuid4
 
 from PySide6.QtCore import QSettings
 
+from floating_clock import sound
+from floating_clock._coerce import clamp_float, clamp_int, clamp_position, to_bool
 from floating_clock.alarm import Alarm
 
 # Config lives in a `config` subdir under the program directory, independent of
 # the working directory, so autostart (cwd is usually System32) reads the same file.
 CONFIG_DIRNAME = "config"
 CONFIG_FILENAME = "config.ini"
+
+# Alarm popup layouts: where the alarm name/content sit relative to the time.
+POPUP_LAYOUT_LABEL_TIME = "label_time"  # name/content above, time below
+POPUP_LAYOUT_TIME_LABEL = "time_label"  # time above, name/content below
+POPUP_LAYOUT_LABEL_ONLY = "label_only"  # name/content only
+POPUP_LAYOUTS = (POPUP_LAYOUT_LABEL_TIME, POPUP_LAYOUT_TIME_LABEL, POPUP_LAYOUT_LABEL_ONLY)
 
 
 def app_dir() -> Path:
@@ -100,7 +107,7 @@ class Config:
     alarm_popup_background_opacity: float = 0.65
     alarm_popup_flash_enabled: bool = True
     alarm_popup_font_scale: float = 1.0
-    alarm_popup_layout: str = "label_time"
+    alarm_popup_layout: str = POPUP_LAYOUT_LABEL_TIME
     alarms: list[Alarm] = field(default_factory=list)
 
     # ---- Persistence ----
@@ -108,21 +115,21 @@ class Config:
     def load(cls) -> "Config":
         s = _settings()
         cfg = cls()
-        cfg.font_size = _clamp_int(s.value("font_size", cfg.font_size), 8, 400, cfg.font_size)
-        cfg.opacity = _clamp_float(s.value("opacity", cfg.opacity), 0.1, 1.0, cfg.opacity)
+        cfg.font_size = clamp_int(s.value("font_size", cfg.font_size), 8, 400, cfg.font_size)
+        cfg.opacity = clamp_float(s.value("opacity", cfg.opacity), 0.1, 1.0, cfg.opacity)
         cfg.color = str(s.value("color", cfg.color))
-        cfg.auto_color = _to_bool(s.value("auto_color", cfg.auto_color))
+        cfg.auto_color = to_bool(s.value("auto_color", cfg.auto_color))
         cfg.auto_color_dark_bg = str(
             s.value("auto_color_dark_bg", cfg.auto_color_dark_bg)
         )
         cfg.auto_color_light_bg = str(
             s.value("auto_color_light_bg", cfg.auto_color_light_bg)
         )
-        cfg.show_seconds = _to_bool(s.value("show_seconds", cfg.show_seconds))
-        cfg.show_date = _to_bool(s.value("show_date", cfg.show_date))
-        cfg.click_through = _to_bool(s.value("click_through", cfg.click_through))
-        cfg.start_on_boot = _to_bool(s.value("start_on_boot", cfg.start_on_boot))
-        cfg.sound_mode = _normalize_sound_mode(
+        cfg.show_seconds = to_bool(s.value("show_seconds", cfg.show_seconds))
+        cfg.show_date = to_bool(s.value("show_date", cfg.show_date))
+        cfg.click_through = to_bool(s.value("click_through", cfg.click_through))
+        cfg.start_on_boot = to_bool(s.value("start_on_boot", cfg.start_on_boot))
+        cfg.sound_mode = sound.normalize_mode(
             s.value("sound_mode", cfg.sound_mode)
         )
         cfg.sound_system_alias = str(
@@ -131,7 +138,7 @@ class Config:
         cfg.sound_custom_path = str(
             s.value("sound_custom_path", cfg.sound_custom_path)
         )
-        cfg.ring_when_screen_off = _to_bool(
+        cfg.ring_when_screen_off = to_bool(
             s.value("ring_when_screen_off", cfg.ring_when_screen_off)
         )
         cfg.alarm_popup_text_color = str(
@@ -143,7 +150,7 @@ class Config:
                 cfg.alarm_popup_background_color,
             )
         )
-        cfg.alarm_popup_background_opacity = _clamp_float(
+        cfg.alarm_popup_background_opacity = clamp_float(
             s.value(
                 "alarm_popup_background_opacity",
                 cfg.alarm_popup_background_opacity,
@@ -152,13 +159,13 @@ class Config:
             1.0,
             cfg.alarm_popup_background_opacity,
         )
-        cfg.alarm_popup_flash_enabled = _to_bool(
+        cfg.alarm_popup_flash_enabled = to_bool(
             s.value(
                 "alarm_popup_flash_enabled",
                 cfg.alarm_popup_flash_enabled,
             )
         )
-        cfg.alarm_popup_font_scale = _clamp_float(
+        cfg.alarm_popup_font_scale = clamp_float(
             s.value("alarm_popup_font_scale", cfg.alarm_popup_font_scale),
             0.5,
             3.0,
@@ -170,8 +177,8 @@ class Config:
 
         px = s.value("pos_x", None)
         py = s.value("pos_y", None)
-        cfg.pos_x = _position(px)
-        cfg.pos_y = _position(py)
+        cfg.pos_x = clamp_position(px)
+        cfg.pos_y = clamp_position(py)
 
         raw = s.value("alarms", "[]")
         try:
@@ -206,7 +213,7 @@ class Config:
         s.setValue("show_date", bool(self.show_date))
         s.setValue("click_through", bool(self.click_through))
         s.setValue("start_on_boot", bool(self.start_on_boot))
-        s.setValue("sound_mode", _normalize_sound_mode(self.sound_mode))
+        s.setValue("sound_mode", sound.normalize_mode(self.sound_mode))
         s.setValue("sound_system_alias", str(self.sound_system_alias))
         s.setValue("sound_custom_path", str(self.sound_custom_path))
         s.setValue("ring_when_screen_off", bool(self.ring_when_screen_off))
@@ -234,54 +241,7 @@ class Config:
         s.sync()
 
 
-def _to_bool(value) -> bool:
-    """QSettings reads bool as a string on some platforms; normalize here."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
-
-
-def _clamp_float(value, low: float, high: float, default: float) -> float:
-    """Read a numeric setting and clamp it to a range."""
-    try:
-        number = float(value)
-    except (TypeError, ValueError, OverflowError):
-        return default
-    if not math.isfinite(number):
-        return default
-    return max(low, min(high, number))
-
-
-def _clamp_int(value, low: int, high: int, default: int) -> int:
-    """Read an integer setting without allowing malformed data to stop startup."""
-    try:
-        return max(low, min(high, int(value)))
-    except (TypeError, ValueError, OverflowError):
-        return default
-
-
-def _position(value) -> Optional[int]:
-    """Ignore invalid or implausible coordinates before passing them to Qt."""
-    try:
-        position = int(value)
-    except (TypeError, ValueError, OverflowError):
-        return None
-    return position if -1_000_000 <= position <= 1_000_000 else None
-
-
-def _normalize_sound_mode(value) -> str:
-    """Coerce the sound mode: silent / system / custom; invalid falls back to system."""
-    value = str(value or "system")
-    if value in ("silent", "system", "custom"):
-        return value
-    return "system"
-
-
 def _normalize_popup_layout(value) -> str:
-    """Coerce the alarm popup layout setting."""
-    value = str(value or "label_time")
-    if value in ("label_time", "time_label", "label_only"):
-        return value
-    return "label_time"
+    """Coerce the alarm popup layout setting; invalid falls back to label-above-time."""
+    value = str(value or POPUP_LAYOUT_LABEL_TIME)
+    return value if value in POPUP_LAYOUTS else POPUP_LAYOUT_LABEL_TIME

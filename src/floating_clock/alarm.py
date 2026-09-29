@@ -88,6 +88,10 @@ class Alarm:
         )
 
     def __post_init__(self) -> None:
+        self.normalize()
+
+    def normalize(self) -> None:
+        """Coerce repeat_type/repeat_weekdays to valid values (call after editing fields)."""
         self.repeat_type = _normalize_repeat_type(self.repeat_type)
         self.repeat_weekdays = _normalize_weekdays(self.repeat_weekdays)
 

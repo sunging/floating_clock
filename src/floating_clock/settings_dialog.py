@@ -39,6 +39,7 @@ from floating_clock.alarm import (
     REPEAT_ONCE,
     REPEAT_WEEKDAYS,
     WEEKDAY_NAMES,
+    WORKDAY_INDICES,
     Alarm,
 )
 from floating_clock.config import (
@@ -143,8 +144,10 @@ class SettingsDialog(QDialog):
         form.addRow("透明度", opacity_w)
 
         self._color_btn = QPushButton()
-        self._update_color_btn()
-        self._color_btn.clicked.connect(self._pick_color)
+        _set_color_button(self._color_btn, self._selected_color)
+        self._color_btn.clicked.connect(
+            lambda: self._pick_color("_selected_color", self._color_btn, "选择文字颜色")
+        )
         form.addRow("文字颜色", self._color_btn)
 
         self._auto_color_chk = QCheckBox("自动适配背景色")
@@ -153,12 +156,20 @@ class SettingsDialog(QDialog):
 
         self._auto_dark_btn = QPushButton()
         _set_color_button(self._auto_dark_btn, self._selected_auto_dark)
-        self._auto_dark_btn.clicked.connect(self._pick_auto_dark_color)
+        self._auto_dark_btn.clicked.connect(
+            lambda: self._pick_color(
+                "_selected_auto_dark", self._auto_dark_btn, "选择深色背景下的文字颜色"
+            )
+        )
         form.addRow("深色背景用色", self._auto_dark_btn)
 
         self._auto_light_btn = QPushButton()
         _set_color_button(self._auto_light_btn, self._selected_auto_light)
-        self._auto_light_btn.clicked.connect(self._pick_auto_light_color)
+        self._auto_light_btn.clicked.connect(
+            lambda: self._pick_color(
+                "_selected_auto_light", self._auto_light_btn, "选择浅色背景下的文字颜色"
+            )
+        )
         form.addRow("浅色背景用色", self._auto_light_btn)
 
         # Initialize each button's enabled state (manual color is overridden in auto mode).
@@ -192,16 +203,20 @@ class SettingsDialog(QDialog):
 
         return group
 
-    def _update_color_btn(self) -> None:
-        _set_color_button(self._color_btn, self._selected_color)
+    def _pick_color(
+        self, attr: str, button: QPushButton, title: str, preview: bool = True
+    ) -> None:
+        """Let the user pick a color into ``self.<attr>`` and refresh its swatch button.
 
-    def _pick_color(self) -> None:
-        color = QColorDialog.getColor(
-            QColor(self._selected_color), self, "选择文字颜色"
-        )
-        if color.isValid():
-            self._selected_color = color.name()
-            self._update_color_btn()
+        ``preview`` pushes the change to the live clock; alarm popup colors
+        only show up through the explicit "preview" button, so they pass False.
+        """
+        color = QColorDialog.getColor(QColor(getattr(self, attr)), self, title)
+        if not color.isValid():
+            return
+        setattr(self, attr, color.name())
+        _set_color_button(button, color.name())
+        if preview:
             self._emit_preview()
 
     def _on_auto_color_toggled(self, _checked: bool) -> None:
@@ -215,24 +230,6 @@ class SettingsDialog(QDialog):
         self._auto_dark_btn.setEnabled(auto)
         self._auto_light_btn.setEnabled(auto)
 
-    def _pick_auto_dark_color(self) -> None:
-        color = QColorDialog.getColor(
-            QColor(self._selected_auto_dark), self, "选择深色背景下的文字颜色"
-        )
-        if color.isValid():
-            self._selected_auto_dark = color.name()
-            _set_color_button(self._auto_dark_btn, self._selected_auto_dark)
-            self._emit_preview()
-
-    def _pick_auto_light_color(self) -> None:
-        color = QColorDialog.getColor(
-            QColor(self._selected_auto_light), self, "选择浅色背景下的文字颜色"
-        )
-        if color.isValid():
-            self._selected_auto_light = color.name()
-            _set_color_button(self._auto_light_btn, self._selected_auto_light)
-            self._emit_preview()
-
     # ---- Alarm popup style ----
     def _build_alarm_popup_group(self) -> QGroupBox:
         group = QGroupBox("闹钟弹出样式")
@@ -243,12 +240,26 @@ class SettingsDialog(QDialog):
             self._alarm_text_color_btn,
             self._selected_alarm_text_color,
         )
-        self._alarm_text_color_btn.clicked.connect(self._pick_alarm_text_color)
+        self._alarm_text_color_btn.clicked.connect(
+            lambda: self._pick_color(
+                "_selected_alarm_text_color",
+                self._alarm_text_color_btn,
+                "选择提醒文字颜色",
+                preview=False,
+            )
+        )
         form.addRow("提醒文字颜色", self._alarm_text_color_btn)
 
         self._alarm_bg_color_btn = QPushButton()
         _set_color_button(self._alarm_bg_color_btn, self._selected_alarm_bg_color)
-        self._alarm_bg_color_btn.clicked.connect(self._pick_alarm_bg_color)
+        self._alarm_bg_color_btn.clicked.connect(
+            lambda: self._pick_color(
+                "_selected_alarm_bg_color",
+                self._alarm_bg_color_btn,
+                "选择提醒背景颜色",
+                preview=False,
+            )
+        )
         form.addRow("背景颜色", self._alarm_bg_color_btn)
 
         self._alarm_bg_opacity_slider = QSlider(Qt.Horizontal)
@@ -300,36 +311,15 @@ class SettingsDialog(QDialog):
 
         return group
 
-    def _pick_alarm_text_color(self) -> None:
-        color = QColorDialog.getColor(
-            QColor(self._selected_alarm_text_color),
-            self,
-            "选择提醒文字颜色",
-        )
-        if color.isValid():
-            self._selected_alarm_text_color = color.name()
-            _set_color_button(
-                self._alarm_text_color_btn,
-                self._selected_alarm_text_color,
-            )
-
-    def _pick_alarm_bg_color(self) -> None:
-        color = QColorDialog.getColor(
-            QColor(self._selected_alarm_bg_color),
-            self,
-            "选择提醒背景颜色",
-        )
-        if color.isValid():
-            self._selected_alarm_bg_color = color.name()
-            _set_color_button(
-                self._alarm_bg_color_btn,
-                self._selected_alarm_bg_color,
-            )
-
     # ---- Live preview ----
     def _current_preview(self) -> Config:
         """Build a preview config from current widget values, leaving position/click-through/alarms unchanged."""
         cfg = copy.deepcopy(self._config)
+        self._apply_appearance_values(cfg)
+        self._apply_alarm_popup_values(cfg)
+        return cfg
+
+    def _apply_appearance_values(self, cfg: Config) -> None:
         cfg.font_size = self._font_spin.value()
         cfg.opacity = self._opacity_slider.value() / 100.0
         cfg.color = self._selected_color
@@ -338,8 +328,6 @@ class SettingsDialog(QDialog):
         cfg.auto_color_light_bg = self._selected_auto_light
         cfg.show_seconds = self._seconds_chk.isChecked()
         cfg.show_date = self._date_chk.isChecked()
-        self._apply_alarm_popup_values(cfg)
-        return cfg
 
     def _emit_preview(self) -> None:
         if self._on_preview is not None:
@@ -502,101 +490,15 @@ class SettingsDialog(QDialog):
         if row >= 0:
             self._alarm_list.takeItem(row)
 
-    def _edit_alarm_dialog(self, alarm: Alarm):
-        """Edit time/name/content/repeat in a small dialog; return an Alarm or None."""
-        dlg = QDialog(self)
-        dlg.setWindowTitle("编辑闹钟")
-        form = QFormLayout(dlg)
-
-        h, m = _parse_hhmm(alarm.time)
-        hour_combo = QComboBox()
-        hour_combo.addItems([f"{i:02d}" for i in range(24)])
-        hour_combo.setCurrentIndex(h)
-        minute_combo = QComboBox()
-        minute_combo.addItems([f"{i:02d}" for i in range(60)])
-        minute_combo.setCurrentIndex(m)
-        # Dropdown-style time picking: click to choose hour/minute, touch-friendly.
-        time_row = QHBoxLayout()
-        time_row.addWidget(hour_combo)
-        time_row.addWidget(QLabel(":"))
-        time_row.addWidget(minute_combo)
-        time_row.addStretch(1)
-        time_w = QWidget()
-        time_w.setLayout(time_row)
-        form.addRow("时间", time_w)
-
-        label_edit = QLineEdit(alarm.label)
-        form.addRow("名称", label_edit)
-
-        content_edit = QPlainTextEdit(alarm.content)
-        content_edit.setFixedHeight(72)
-        form.addRow("内容", content_edit)
-
-        repeat_combo = QComboBox()
-        repeat_combo.addItem("单次", REPEAT_ONCE)
-        repeat_combo.addItem("每天", REPEAT_DAILY)
-        repeat_combo.addItem("工作日", REPEAT_WEEKDAYS)
-        repeat_combo.addItem("自定义星期", REPEAT_CUSTOM)
-        repeat_idx = repeat_combo.findData(alarm.repeat_type)
-        repeat_combo.setCurrentIndex(max(0, repeat_idx))
-        form.addRow("重复", repeat_combo)
-
-        weekday_row = QHBoxLayout()
-        weekday_checks: list[QCheckBox] = []
-        selected_weekdays = (
-            alarm.repeat_weekdays if alarm.repeat_weekdays else [0, 1, 2, 3, 4]
-        )
-        for index, name in enumerate(WEEKDAY_NAMES):
-            chk = QCheckBox(name)
-            chk.setChecked(index in selected_weekdays)
-            weekday_checks.append(chk)
-            weekday_row.addWidget(chk)
-        weekday_w = QWidget()
-        weekday_w.setLayout(weekday_row)
-        form.addRow("自定义", weekday_w)
-
-        def update_weekday_enabled() -> None:
-            enabled = repeat_combo.currentData() == REPEAT_CUSTOM
-            weekday_w.setEnabled(enabled)
-
-        repeat_combo.currentIndexChanged.connect(update_weekday_enabled)
-        update_weekday_enabled()
-
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
-
-        def accept_alarm() -> None:
-            repeat_type = repeat_combo.currentData()
-            repeat_weekdays = [
-                i for i, chk in enumerate(weekday_checks) if chk.isChecked()
-            ]
-            if repeat_type == REPEAT_CUSTOM and not repeat_weekdays:
-                QMessageBox.warning(
-                    dlg,
-                    "编辑闹钟",
-                    "自定义重复周期至少需要选择一天。",
-                )
-                return
-            dlg.accept()
-
-        buttons.accepted.connect(accept_alarm)
-        buttons.rejected.connect(dlg.reject)
-        form.addRow(buttons)
-
-        if dlg.exec() != QDialog.Accepted:
-            return None
-
-        alarm.time = f"{hour_combo.currentIndex():02d}:{minute_combo.currentIndex():02d}"
-        alarm.label = label_edit.text().strip() or "闹钟"
-        alarm.content = content_edit.toPlainText().strip()
-        alarm.repeat_type = repeat_combo.currentData()
-        alarm.repeat_weekdays = [
-            i for i, chk in enumerate(weekday_checks) if chk.isChecked()
-        ]
-        alarm.enabled = True
-        alarm.__post_init__()
-        return alarm
+    def _edit_alarm_dialog(self, alarm: Alarm) -> Optional[Alarm]:
+        """Edit an alarm in a modal sub-dialog; return it updated, or None if cancelled."""
+        dlg = AlarmEditDialog(alarm, self)
+        try:
+            if dlg.exec() != QDialog.Accepted:
+                return None
+            return dlg.alarm()
+        finally:
+            dlg.deleteLater()
 
     # ---- Result ----
     def mark_alarm_fired(self, fired: Alarm) -> None:
@@ -617,14 +519,7 @@ class SettingsDialog(QDialog):
     def result_config(self) -> Config:
         """Read the final config from the widgets (called after exec()==Accepted)."""
         cfg = self._config
-        cfg.font_size = self._font_spin.value()
-        cfg.opacity = self._opacity_slider.value() / 100.0
-        cfg.color = self._selected_color
-        cfg.auto_color = self._auto_color_chk.isChecked()
-        cfg.auto_color_dark_bg = self._selected_auto_dark
-        cfg.auto_color_light_bg = self._selected_auto_light
-        cfg.show_seconds = self._seconds_chk.isChecked()
-        cfg.show_date = self._date_chk.isChecked()
+        self._apply_appearance_values(cfg)
         cfg.click_through = self._click_through_chk.isChecked()
         cfg.start_on_boot = self._boot_chk.isChecked()
         self._apply_alarm_popup_values(cfg)
@@ -638,6 +533,93 @@ class SettingsDialog(QDialog):
             alarms.append(alarm)
         cfg.alarms = alarms
         return cfg
+
+
+class AlarmEditDialog(QDialog):
+    """Edits one alarm's time, name, content, and repeat rule."""
+
+    def __init__(self, alarm: Alarm, parent=None):
+        super().__init__(parent)
+        self._alarm = alarm
+        self.setWindowTitle("编辑闹钟")
+        form = QFormLayout(self)
+
+        # Dropdown-style time picking: click to choose hour/minute, touch-friendly.
+        h, m = _parse_hhmm(alarm.time)
+        self._hour_combo = QComboBox()
+        self._hour_combo.addItems([f"{i:02d}" for i in range(24)])
+        self._hour_combo.setCurrentIndex(h)
+        self._minute_combo = QComboBox()
+        self._minute_combo.addItems([f"{i:02d}" for i in range(60)])
+        self._minute_combo.setCurrentIndex(m)
+        time_row = QHBoxLayout()
+        time_row.addWidget(self._hour_combo)
+        time_row.addWidget(QLabel(":"))
+        time_row.addWidget(self._minute_combo)
+        time_row.addStretch(1)
+        time_w = QWidget()
+        time_w.setLayout(time_row)
+        form.addRow("时间", time_w)
+
+        self._label_edit = QLineEdit(alarm.label)
+        form.addRow("名称", self._label_edit)
+
+        self._content_edit = QPlainTextEdit(alarm.content)
+        self._content_edit.setFixedHeight(72)
+        form.addRow("内容", self._content_edit)
+
+        self._repeat_combo = QComboBox()
+        for repeat_type, name in _REPEAT_NAMES.items():
+            self._repeat_combo.addItem(name, repeat_type)
+        self._repeat_combo.setCurrentIndex(
+            max(0, self._repeat_combo.findData(alarm.repeat_type))
+        )
+        form.addRow("重复", self._repeat_combo)
+
+        weekday_row = QHBoxLayout()
+        self._weekday_checks: list[QCheckBox] = []
+        # Pre-select workdays so switching to "custom" starts from a sensible set.
+        selected = alarm.repeat_weekdays or WORKDAY_INDICES
+        for index, name in enumerate(WEEKDAY_NAMES):
+            chk = QCheckBox(name)
+            chk.setChecked(index in selected)
+            self._weekday_checks.append(chk)
+            weekday_row.addWidget(chk)
+        self._weekday_w = QWidget()
+        self._weekday_w.setLayout(weekday_row)
+        form.addRow("自定义", self._weekday_w)
+
+        self._repeat_combo.currentIndexChanged.connect(self._update_weekday_enabled)
+        self._update_weekday_enabled()
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._validate_and_accept)
+        buttons.rejected.connect(self.reject)
+        form.addRow(buttons)
+
+    def _selected_weekdays(self) -> list[int]:
+        return [i for i, chk in enumerate(self._weekday_checks) if chk.isChecked()]
+
+    def _update_weekday_enabled(self) -> None:
+        self._weekday_w.setEnabled(self._repeat_combo.currentData() == REPEAT_CUSTOM)
+
+    def _validate_and_accept(self) -> None:
+        if self._repeat_combo.currentData() == REPEAT_CUSTOM and not self._selected_weekdays():
+            QMessageBox.warning(self, "编辑闹钟", "自定义重复周期至少需要选择一天。")
+            return
+        self.accept()
+
+    def alarm(self) -> Alarm:
+        """Write the edited values into the alarm passed in (enabled) and return it."""
+        alarm = self._alarm
+        alarm.time = f"{self._hour_combo.currentIndex():02d}:{self._minute_combo.currentIndex():02d}"
+        alarm.label = self._label_edit.text().strip() or "闹钟"
+        alarm.content = self._content_edit.toPlainText().strip()
+        alarm.repeat_type = self._repeat_combo.currentData()
+        alarm.repeat_weekdays = self._selected_weekdays()
+        alarm.enabled = True
+        alarm.normalize()
+        return alarm
 
 
 def _parse_hhmm(value: str) -> tuple[int, int]:
@@ -654,19 +636,18 @@ def _set_color_button(button: QPushButton, color: str) -> None:
     button.setStyleSheet(f"background-color: {color};")
 
 
+# Repeat-rule names, in the order offered by the alarm editor.
+_REPEAT_NAMES = {
+    REPEAT_ONCE: "单次",
+    REPEAT_DAILY: "每天",
+    REPEAT_WEEKDAYS: "工作日",
+    REPEAT_CUSTOM: "自定义星期",
+}
+
+
 def _repeat_label(alarm: Alarm) -> str:
     """Return the repeat-period text shown in the list."""
-    if alarm.repeat_type == REPEAT_ONCE:
-        return "单次"
-    if alarm.repeat_type == REPEAT_DAILY:
-        return "每天"
-    if alarm.repeat_type == REPEAT_WEEKDAYS:
-        return "工作日"
     if alarm.repeat_type == REPEAT_CUSTOM:
-        names = [
-            WEEKDAY_NAMES[i]
-            for i in alarm.repeat_weekdays
-            if 0 <= i < len(WEEKDAY_NAMES)
-        ]
+        names = [WEEKDAY_NAMES[i] for i in alarm.repeat_weekdays]
         return "、".join(names) if names else "自定义"
-    return "每天"
+    return _REPEAT_NAMES.get(alarm.repeat_type, _REPEAT_NAMES[REPEAT_DAILY])

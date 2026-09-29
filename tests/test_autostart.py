@@ -54,3 +54,12 @@ def test_detach_skipped_in_child(monkeypatch):
     monkeypatch.setenv("FLOATING_CLOCK_DETACHED", "1")
     assert app_module._detach_to_background() is False
     popen.assert_not_called()
+
+
+def test_detach_skipped_for_frozen_exe(monkeypatch):
+    popen = Mock()
+    monkeypatch.setattr(app_module.subprocess, "Popen", popen)
+    monkeypatch.delenv("FLOATING_CLOCK_DETACHED", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert app_module._detach_to_background() is False
+    popen.assert_not_called()

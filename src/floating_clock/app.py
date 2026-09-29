@@ -305,9 +305,10 @@ def _detach_to_background() -> bool:
 
     An environment-variable sentinel avoids infinite relaunching: when already
     the background child, return False and run normally. Non-Windows platforms
-    are not handled (returns False).
+    are not handled (returns False). A frozen exe is built with --noconsole and
+    never holds a terminal, so it runs in place.
     """
-    if sys.platform != "win32":
+    if sys.platform != "win32" or getattr(sys, "frozen", False):
         return False
     if os.environ.get(_DETACHED_ENV) == "1":
         return False  # already the background child, start normally

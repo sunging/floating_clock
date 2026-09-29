@@ -1,6 +1,21 @@
 # AGENTS.md
 
-Guidance for AI agents and contributors working in this repository.
+Guidance for AI agents (Claude Code, Codex, etc.) and contributors working in
+this repository.
+
+## Key rules
+
+- **Commits:** Conventional Commits with English messages (see [Commits](#commits)).
+- **Tests:** pytest suite under `tests/`; run headless with
+  `QT_QPA_PLATFORM=offscreen uv run pytest`. CI runs it on Windows. For things
+  hard to unit-test, fall back to a headless smoke test.
+- **Lint:** `uv run ruff check` must pass (CI runs it); code must stay
+  Python 3.9-compatible.
+- **Windows-first:** click-through, sounds, autostart, the display-power
+  monitor, and background relaunch are guarded by `sys.platform`; keep
+  non-Windows degradation graceful.
+- **Config:** a new setting needs a `_READERS` entry in `config.py` — see
+  [Adding a setting](#adding-a-setting).
 
 ## Project
 

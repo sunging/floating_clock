@@ -594,6 +594,21 @@ class SettingsDialog(QDialog):
         return alarm
 
     # ---- Result ----
+    def mark_alarm_fired(self, fired: Alarm) -> None:
+        """Consume a one-shot in the editor unless its schedule was changed."""
+        for index in range(self._alarm_list.count()):
+            item = self._alarm_list.item(index)
+            alarm: Alarm = item.data(Qt.UserRole)
+            if alarm.id != fired.id:
+                continue
+            if (alarm.time, alarm.repeat_type, alarm.repeat_weekdays) == (
+                fired.time, fired.repeat_type, fired.repeat_weekdays
+            ):
+                alarm.enabled = False
+                item.setData(Qt.UserRole, alarm)
+                item.setCheckState(Qt.Unchecked)
+            break
+
     def result_config(self) -> Config:
         """Read the final config from the widgets (called after exec()==Accepted)."""
         cfg = self._config

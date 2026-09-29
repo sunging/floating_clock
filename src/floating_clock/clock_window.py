@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import sys
+import math
 from datetime import datetime
 from statistics import median
 from typing import Callable, Optional
 
 from PySide6.QtCore import QPoint, QRect, Qt, QTimer
-from PySide6.QtGui import QColor, QFont, QGuiApplication
-from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QGuiApplication, QTextDocument, QTextOption
+from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
 from floating_clock.config import Config
 
@@ -47,6 +48,21 @@ class ClockWindow(QWidget):
         self._label = QLabel(self)
         self._label.setAlignment(Qt.AlignCenter)
         self._label.setTextInteractionFlags(Qt.NoTextInteraction)
+        self._label.setTextFormat(Qt.PlainText)
+
+        self._alarm_panel = QWidget(self)
+        popup_layout = QVBoxLayout(self._alarm_panel)
+        popup_layout.setContentsMargins(0, 0, 0, 0)
+        popup_layout.setSpacing(4)
+        self._alarm_text = QPlainTextEdit(self._alarm_panel)
+        self._alarm_text.setReadOnly(True)
+        self._alarm_text.setFrameShape(QPlainTextEdit.NoFrame)
+        self._alarm_text.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        popup_layout.addWidget(self._alarm_text)
+        self._stop_button = QPushButton("停止闹钟", self._alarm_panel)
+        self._stop_button.clicked.connect(self._dismiss_popup)
+        popup_layout.addWidget(self._stop_button)
+        self._alarm_panel.hide()
 
         # Flashing state
         self._flash_timer = QTimer(self)
@@ -77,6 +93,7 @@ class ClockWindow(QWidget):
         self._apply_label_style(self._text_color())
         self.setWindowOpacity(config.opacity)
         if self._alarm_active:
+            self._sync_flash_timer()
             self._render_alarm_popup()
         else:
             self.update_time()
@@ -169,23 +186,68 @@ class ClockWindow(QWidget):
         self._label.setStyleSheet(
             f"color: {color}; {background} {padding} {border}"
         )
+        self._alarm_text.setStyleSheet(
+            f"QPlainTextEdit {{ color: {color}; {background} padding: 4px; {border} }}"
+        )
 
     def _apply_font(self, size: int) -> None:
         font = QFont("Segoe UI", max(8, int(size)))
         font.setBold(True)
         self._label.setFont(font)
+        self._popup_font = font
 
     def set_move_hint(self, on: bool) -> None:
         """Show/hide the dashed "draggable" border hint."""
         self._move_hint = on
+        if self._alarm_active:
+            self._render_alarm_popup()
+            return
         self._apply_color(self._text_color())
         self._fit()
 
     def _fit(self) -> None:
+        if self._alarm_active:
+            self._fit_alarm_popup()
+            return
         self._label.adjustSize()
         self.resize(self._label.size())
         # Re-clamp after a size change (e.g. the alarm popup enlarges) to stay on screen.
         self._clamp_to_screen()
+
+    def _fit_alarm_popup(self) -> None:
+        """Bound the popup to its display; scroll rather than truncate content."""
+        screen = self._screen_for_geometry(QRect(self.x(), self.y(), 1, 1))
+        if screen is None:
+            return
+        area = screen.availableGeometry()
+        max_width = max(1, int(area.width() * 0.8))
+        max_height = max(1, int(area.height() * 0.8))
+        button_height = self._stop_button.sizeHint().height()
+        font = QFont(self._popup_font)
+        metrics = QFontMetricsF(font)
+        text = self._alarm_text.toPlainText()
+        widest = max((metrics.horizontalAdvance(c) for c in set(text) if c != "\n"), default=1)
+        # Even the largest configured font must leave room for readable glyphs.
+        scale = min(1.0, max(1, max_width - 32) / max(1, widest),
+                    max(1, max_height - button_height - 24) / max(1, metrics.height()))
+        if scale < 1:
+            font.setPointSizeF(max(1.0, font.pointSizeF() * scale))
+            metrics = QFontMetricsF(font)
+        if self._alarm_text.font() != font:
+            self._alarm_text.setFont(font)
+        natural_width = max((metrics.horizontalAdvance(line) for line in text.splitlines()), default=0)
+        width = min(max_width, max(160, math.ceil(natural_width) + 32))
+        document = QTextDocument()
+        document.setDefaultFont(font)
+        option = document.defaultTextOption()
+        option.setWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        document.setDefaultTextOption(option)
+        document.setPlainText(text)
+        document.setTextWidth(max(1, width - 32))
+        height = min(max_height, math.ceil(document.size().height()) + button_height + 24)
+        self.resize(width, height)
+        self._alarm_panel.setGeometry(self.rect())
+        self.move(_clamped_top_left(self._window_geometry(), area))
 
     # ---- Screen boundary clamping ----
     def _current_screen(self):
@@ -221,6 +283,8 @@ class ClockWindow(QWidget):
             self._move_to_configured_position()
         else:
             self._clamp_to_screen()
+        if self._alarm_active:
+            self._fit()
 
     def _clamp_to_screen(self) -> None:
         """Move the window into the current screen's available area to avoid overflow."""
@@ -238,9 +302,12 @@ class ClockWindow(QWidget):
     # ---- Time display ----
     def update_time(self) -> None:
         if self._alarm_active:
-            return  # during flashing, _toggle_flash controls the text
-        self._label.setText(self._format_now())
-        self._fit()
+            self._update_alarm_text()
+            return
+        text = self._format_now()
+        if self._label.text() != text:
+            self._label.setText(text)
+            self._fit()
 
     def _format_now(self) -> str:
         now = datetime.now()
@@ -253,7 +320,6 @@ class ClockWindow(QWidget):
     # ---- Click-through ----
     def set_click_through(self, enabled: bool) -> None:
         """Implement mouse click-through via the extended window style on Windows."""
-        self.config.click_through = enabled
         if sys.platform != "win32":
             return
         try:
@@ -281,18 +347,33 @@ class ClockWindow(QWidget):
         self._alarm_active = True
         self._alarm_title = label or "闹钟"
         self._alarm_content = content or ""
-        self._flash_on = False
+        self._label.hide()
+        self._alarm_panel.show()
+        self._stop_button.setText("停止闹钟")
+        self._flash_on = True
+        self._sync_flash_timer()
+        self._render_alarm_popup()
+        self._alarm_text.verticalScrollBar().setValue(0)
+
+    def _sync_flash_timer(self) -> None:
+        """Keep flash timing independent of time-text refreshes."""
         if self.config.alarm_popup_flash_enabled:
-            self._flash_timer.start()
-            self._toggle_flash()
+            if not self._flash_timer.isActive():
+                self._flash_timer.start()
         else:
             self._flash_timer.stop()
             self._flash_on = True
-            self._render_alarm_popup()
+
+    def _dismiss_popup(self) -> None:
+        if self._on_clicked is not None:
+            self._on_clicked()
+        if self._alarm_active:
+            self.stop_flashing()
 
     def preview_alarm(self, label: str = "闹钟预览", content: str = "") -> None:
         """Briefly show the alarm popup effect without playing sound or changing config."""
         self.start_flashing(label, content)
+        self._stop_button.setText("关闭预览")
         self._preview_timer.start(2500)
 
     def stop_flashing(self) -> None:
@@ -301,18 +382,23 @@ class ClockWindow(QWidget):
         self._alarm_active = False
         self._alarm_title = ""
         self._alarm_content = ""
+        self._alarm_panel.hide()
+        self._label.show()
         self._apply_font(self.config.font_size)
         self._apply_label_style(self._text_color())
         # The popup may have been moved when enlarged; restore the user's position after shrinking.
         if self.config.pos_x is not None and self.config.pos_y is not None:
             self.move(self.config.pos_x, self.config.pos_y)
         self.update_time()
+        self._fit()
 
     def _toggle_flash(self) -> None:
         self._flash_on = not self._flash_on
         self._render_alarm_popup()
 
     def _render_alarm_popup(self) -> None:
+        scroll = self._alarm_text.verticalScrollBar()
+        offset, at_bottom = scroll.value(), scroll.value() == scroll.maximum()
         text_color = (
             self.config.alarm_popup_text_color
             if self._flash_on or not self.config.alarm_popup_flash_enabled
@@ -327,10 +413,20 @@ class ClockWindow(QWidget):
             self.config.alarm_popup_background_color,
             self.config.alarm_popup_background_opacity,
         )
-        self._label.setText(
-            self._format_alarm_text(self._alarm_title, self._alarm_content)
-        )
+        self._update_alarm_text()
         self._fit()
+        scroll.setValue(scroll.maximum() if at_bottom else offset)
+
+    def _update_alarm_text(self) -> None:
+        text = self._format_alarm_text(self._alarm_title, self._alarm_content)
+        if self._alarm_text.toPlainText() == text:
+            return
+        scroll = self._alarm_text.verticalScrollBar()
+        offset = scroll.value()
+        at_bottom = offset == scroll.maximum()
+        self._alarm_text.setPlainText(text)
+        self._fit()
+        scroll.setValue(scroll.maximum() if at_bottom else offset)
 
     def _format_alarm_text(self, title: str, content: str) -> str:
         main = title

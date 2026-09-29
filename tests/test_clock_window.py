@@ -1,7 +1,8 @@
 """Tests for clock_window.py helpers (building widgets needs an offscreen QApplication)."""
 
 import pytest
-from PySide6.QtCore import QPoint, QRect
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtTest import QTest
 
 from floating_clock.clock_window import (
     ClockWindow,
@@ -140,7 +141,11 @@ def clock(qapp):
         auto_color_dark_bg="#EEEEEE",
         auto_color_light_bg="#111111",
     )
-    return ClockWindow(cfg)
+    window = ClockWindow(cfg)
+    yield window
+    window.stop_flashing()
+    window.close()
+    window.deleteLater()
 
 
 def test_compute_auto_color_bright_bg(clock):
@@ -189,3 +194,73 @@ def test_format_alarm_text_layouts(clock):
 
     clock.config.alarm_popup_layout = "label_time"
     assert clock._format_alarm_text("起床", "") == "起床\n12:34:56"
+
+
+@pytest.mark.parametrize("preference", [False, True])
+def test_native_click_through_does_not_change_config(clock, preference):
+    clock.config.click_through = preference
+    clock.set_click_through(not preference)
+    assert clock.config.click_through is preference
+
+
+@pytest.mark.parametrize("flash", [False, True])
+@pytest.mark.parametrize("layout", ["label_time", "time_label", "label_only"])
+def test_alarm_time_updates_without_changing_flash_phase(clock, flash, layout):
+    clock.config.alarm_popup_flash_enabled = flash
+    clock.config.alarm_popup_layout = layout
+    clock._format_now = lambda: "08:00:00"
+    clock.start_flashing("起床", "内容")
+    phase = clock._flash_on
+    style = clock._alarm_text.styleSheet()
+    clock._format_now = lambda: "08:00:10"
+    clock.update_time()
+    assert ("08:00:10" in clock._alarm_text.toPlainText()) is (layout != "label_only")
+    assert "08:00:00" not in clock._alarm_text.toPlainText()
+    assert clock._flash_on == phase
+    assert clock._alarm_text.styleSheet() == style
+    assert clock._flash_timer.isActive() is flash
+    clock.stop_flashing()
+
+
+def test_preview_flash_setting_takes_effect_while_alarm_is_visible(clock):
+    clock.config.alarm_popup_flash_enabled = False
+    clock.preview_alarm("预览", "内容")
+    assert not clock._flash_timer.isActive()
+    clock.config.alarm_popup_flash_enabled = True
+    clock.apply_config(clock.config)
+    assert clock._flash_timer.isActive()
+    clock.config.alarm_popup_flash_enabled = False
+    clock.apply_config(clock.config)
+    assert not clock._flash_timer.isActive()
+    assert clock._flash_on
+    QTest.mouseClick(clock._stop_button, Qt.LeftButton)
+    assert not clock._preview_timer.isActive()
+
+
+@pytest.mark.parametrize("content", ["长内容" * 100, "W" * 120, "一行\n" * 100, "<b>纯文本</b>" * 100],
+                         ids=["chinese", "unbroken", "multiline", "plain_markup"])
+@pytest.mark.parametrize("font_size,scale", [(48, 1), (400, 3)])
+def test_long_alarm_fits_small_screen_and_can_scroll(clock, qapp, content, font_size, scale):
+    area = QRect(-640, 0, 640, 480)
+    clock._screen_for_geometry = lambda geometry: FakeScreen(area)
+    clock.config.font_size = font_size
+    clock.config.alarm_popup_font_scale = scale
+    clock.move(-600, 20)
+    clock.show()
+    clock.start_flashing("提醒", content)
+    qapp.processEvents()
+    assert area.contains(clock.geometry())
+    assert content in clock._alarm_text.toPlainText()
+    assert clock.rect().contains(clock._stop_button.geometry().translated(clock._alarm_panel.pos()))
+    scroll = clock._alarm_text.verticalScrollBar()
+    assert scroll.maximum() > 0
+    scroll.setValue(scroll.maximum())
+    clock._format_now = lambda: "09:00:00"
+    clock.update_time()
+    assert scroll.value() == scroll.maximum()
+    clock._toggle_flash()
+    assert scroll.value() == scroll.maximum()
+    QTest.mouseClick(clock._stop_button, Qt.LeftButton)
+    assert not clock._alarm_active
+    assert clock._alarm_panel.isHidden()
+    clock.close()

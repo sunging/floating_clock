@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 import sys
 
 from PySide6.QtCore import Qt, QTimer
@@ -21,6 +20,8 @@ class FloatingClockApp:
     def __init__(self, app: QApplication):
         self.app = app
         self.config = Config.load()
+        self._settings_dialog = None
+        self._move_mode = False
 
         # If autostart is on, refresh the registry command (interpreter/path may have changed).
         if self.config.start_on_boot and autostart.is_supported():
@@ -151,64 +152,72 @@ class FloatingClockApp:
 
     # ---- Settings ----
     def _open_settings(self) -> None:
-        # Snapshot the original config so "Cancel" can roll back live preview changes.
-        original = copy.deepcopy(self.config)
+        if self._settings_dialog is not None:
+            self._settings_dialog.raise_()
+            self._settings_dialog.activateWindow()
+            return
         dlg = SettingsDialog(
             self.config,
             on_preview=self._preview_config,
             on_alarm_preview=self._preview_alarm_popup,
         )
-        if dlg.exec() == SettingsDialog.Accepted:
+        self._settings_dialog = dlg
+        try:
+            accepted = dlg.exec() == SettingsDialog.Accepted
+            if accepted:
+                updated = dlg.result_config()
+                updated.pos_x, updated.pos_y = self.config.pos_x, self.config.pos_y
+                self.config = updated
+                self.config.start_on_boot = autostart.set_enabled(self.config.start_on_boot)
+                self.config.save()
+                self.alarm_manager.set_alarms(self.config.alarms)
+                self._lock_action.setChecked(self.config.click_through)
+        finally:
+            self._settings_dialog = None
             if not self._ringing:
                 self.clock.stop_flashing()
-            self.config = dlg.result_config()
-            # Apply autostart to the registry and write back the actual result.
-            self.config.start_on_boot = autostart.set_enabled(
-                self.config.start_on_boot
-            )
-            self.config.save()
+            # Preview owns a copy; keep all runtime changes to the real config.
             self.clock.apply_config(self.config)
-            self.alarm_manager.set_alarms(self.config.alarms)
-            self._lock_action.setChecked(self.config.click_through)
-        else:
-            # Cancel: restore the appearance from before the preview.
-            if not self._ringing:
-                self.clock.stop_flashing()
-            self.config = original
-            self.clock.apply_config(self.config)
+            self._apply_click_through()
+            dlg.deleteLater()
 
     def _preview_config(self, cfg: Config) -> None:
         """Live preview: apply appearance changes to the clock immediately (no save)."""
         self.clock.apply_config(cfg)
+        self._apply_click_through()
 
     def _preview_alarm_popup(self, cfg: Config) -> None:
         """Preview the alarm popup style without playing a sound."""
         if self._ringing:
             return
         self.clock.apply_config(cfg)
+        self._apply_click_through()
         self.clock.preview_alarm("闹钟预览", "这是闹钟内容预览")
 
     def _toggle_click_through(self, enabled: bool) -> None:
         self.config.click_through = enabled
-        self.clock.set_click_through(enabled)
+        self._apply_click_through()
         self.config.save()
+
+    def _apply_click_through(self) -> None:
+        """Apply transient overrides without changing the user's preference."""
+        self.clock.set_click_through(
+            self.config.click_through and not (self._move_mode or self._ringing)
+        )
 
     # ---- Move mode ----
     def _toggle_move_mode(self, enabled: bool) -> None:
+        self._move_mode = enabled
+        self._apply_click_through()
+        self.clock.set_move_hint(enabled)
         if enabled:
             # Temporarily disable click-through and show a border hint for dragging.
-            self.clock.set_click_through(False)
-            self.clock.set_move_hint(True)
             self.tray.showMessage(
                 "移动时钟",
                 "按住时钟拖到目标位置，松手后自动恢复穿透。",
                 _make_icon(),
                 4000,
             )
-        else:
-            # Exit move mode: remove the hint and restore the user's click-through setting.
-            self.clock.set_move_hint(False)
-            self.clock.set_click_through(self.config.click_through)
 
     def _on_clock_moved(self) -> None:
         # Auto-exit move mode after a drag (the toggled signal restores click-through).
@@ -221,7 +230,7 @@ class FloatingClockApp:
         self._stop_action.setEnabled(True)
 
         # While ringing, temporarily disable click-through and raise it for click-to-dismiss.
-        self.clock.set_click_through(False)
+        self._apply_click_through()
         self.clock.show()
         self.clock.raise_()
         self.clock.activateWindow()
@@ -242,6 +251,8 @@ class FloatingClockApp:
 
         # A one-shot alarm is now disabled after firing; persist the state.
         if alarm.is_once():
+            if self._settings_dialog is not None:
+                self._settings_dialog.mark_alarm_fired(alarm)
             self.config.alarms = self.alarm_manager.alarms
             self.config.save()
 
@@ -257,7 +268,7 @@ class FloatingClockApp:
         sound.stop()
         self.clock.stop_flashing()
         # Restore the user's original click-through setting.
-        self.clock.set_click_through(self.config.click_through)
+        self._apply_click_through()
 
     def _quit(self) -> None:
         sound.stop()

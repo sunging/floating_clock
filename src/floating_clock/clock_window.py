@@ -8,7 +8,7 @@ from datetime import datetime
 from statistics import median
 from typing import Callable, Optional
 
-from PySide6.QtCore import QPoint, QRect, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, QRect, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QGuiApplication, QTextDocument, QTextOption
 from PySide6.QtWidgets import QLabel, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget
 
@@ -74,6 +74,11 @@ class ClockWindow(QWidget):
         self._alarm_text.setReadOnly(True)
         self._alarm_text.setFrameShape(QPlainTextEdit.NoFrame)
         self._alarm_text.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        # The text edit would otherwise swallow clicks for text selection;
+        # a click on it must dismiss the alarm like a click on the clock.
+        self._alarm_text.setTextInteractionFlags(Qt.NoTextInteraction)
+        self._alarm_viewport = self._alarm_text.viewport()
+        self._alarm_viewport.installEventFilter(self)
         popup_layout.addWidget(self._alarm_text)
         self._stop_button = QPushButton("停止闹钟", self._alarm_panel)
         self._stop_button.clicked.connect(self._dismiss_popup)
@@ -390,6 +395,17 @@ class ClockWindow(QWidget):
             self._on_clicked()
         if self._alarm_active:
             self.stop_flashing()
+
+    def eventFilter(self, watched, event):  # noqa: N802 (Qt naming)
+        """Dismiss the popup on a left click in its text; scrollbar and wheel still scroll."""
+        if (
+            watched == self._alarm_viewport
+            and event.type() == QEvent.MouseButtonPress
+            and event.button() == Qt.LeftButton
+        ):
+            self._dismiss_popup()
+            return True
+        return super().eventFilter(watched, event)
 
     def preview_alarm(self, label: str = "闹钟预览", content: str = "") -> None:
         """Briefly show the alarm popup effect without playing sound or changing config."""

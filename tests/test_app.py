@@ -288,3 +288,17 @@ def test_alarms_due_together_share_one_popup_and_are_all_consumed(controller, mo
 
 def test_single_alarm_message_is_unchanged():
     assert _alarm_message([Alarm(label="L", content="C")]) == ("L", "C")
+
+
+def test_clicking_popup_text_stops_alarm_with_click_through_on(controller, qapp):
+    applied = []
+    controller.clock.set_click_through = applied.append
+    controller._toggle_click_through(True)
+    controller._on_alarm([Alarm(content="Long text " * 200)])
+    qapp.processEvents()
+    assert applied[-1] is False  # ringing lifts click-through so the popup is clickable
+    viewport = controller.clock._alarm_text.viewport()
+    QTest.mouseClick(viewport, Qt.LeftButton, pos=viewport.rect().center())
+    assert not controller._ringing
+    assert not controller.clock._alarm_active
+    assert applied[-1] is True  # the user's preference is back

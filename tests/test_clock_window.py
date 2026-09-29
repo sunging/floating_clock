@@ -267,3 +267,13 @@ def test_long_alarm_fits_small_screen_and_can_scroll(clock, qapp, content, font_
     assert not clock._alarm_active
     assert clock._alarm_panel.isHidden()
     clock.close()
+
+
+def test_clicking_preview_text_dismisses_but_right_click_does_not(clock, qapp):
+    clock.preview_alarm("闹钟预览", "内容")
+    qapp.processEvents()
+    viewport = clock._alarm_text.viewport()
+    QTest.mouseClick(viewport, Qt.RightButton, pos=viewport.rect().center())
+    assert clock._alarm_active
+    QTest.mouseClick(viewport, Qt.LeftButton, pos=viewport.rect().center())
+    assert not clock._alarm_active

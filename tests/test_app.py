@@ -52,6 +52,7 @@ def controller(qapp, temp_config_dir, monkeypatch):
     controller.clock.close()
     controller.clock.deleteLater()
     controller._position_restore_timer.deleteLater()
+    controller.timer.deleteLater()
     for action in (controller._stop_action, controller._lock_action, controller._move_action):
         action.deleteLater()
 

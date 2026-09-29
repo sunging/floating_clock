@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 
 from PySide6.QtCore import Qt, QTimer
@@ -22,6 +24,7 @@ class FloatingClockApp:
         self.config = Config.load()
         self._settings_dialog = None
         self._move_mode = False
+        self._icon = _make_icon()
 
         # If autostart is on, refresh the registry command (interpreter/path may have changed).
         if self.config.start_on_boot and autostart.is_supported():
@@ -64,14 +67,14 @@ class FloatingClockApp:
         self._build_tray()
 
         # Main loop: refresh the time and check alarms.
-        self.timer = QTimer()
+        self.timer = QTimer(self.app)
         self.timer.setInterval(500)
         self.timer.timeout.connect(self._tick)
         self.timer.start()
 
     # ---- Tray ----
     def _build_tray(self) -> None:
-        self.tray = QSystemTrayIcon(_make_icon(), self.app)
+        self.tray = QSystemTrayIcon(self._icon, self.app)
         self.tray.setToolTip("浮动时钟")
 
         menu = QMenu()
@@ -215,7 +218,7 @@ class FloatingClockApp:
             self.tray.showMessage(
                 "移动时钟",
                 "按住时钟拖到目标位置，松手后自动恢复穿透。",
-                _make_icon(),
+                self._icon,
                 4000,
             )
 
@@ -245,7 +248,7 @@ class FloatingClockApp:
         self.tray.showMessage(
             alarm.label,
             alarm.content or alarm.label,
-            _make_icon(),
+            self._icon,
             10000,
         )
 
@@ -293,6 +296,10 @@ def _make_icon() -> QIcon:
     return QIcon(pix)
 
 
+# Set in the relaunched child (and usable by hand) to run in the foreground.
+_DETACHED_ENV = "FLOATING_CLOCK_DETACHED"
+
+
 def _detach_to_background() -> bool:
     """On Windows, relaunch self as a detached background process, freeing the foreground terminal.
 
@@ -300,27 +307,21 @@ def _detach_to_background() -> bool:
     the background child, return False and run normally. Non-Windows platforms
     are not handled (returns False).
     """
-    import os
-
     if sys.platform != "win32":
         return False
-    if os.environ.get("FLOATING_CLOCK_DETACHED") == "1":
+    if os.environ.get(_DETACHED_ENV) == "1":
         return False  # already the background child, start normally
 
     try:
-        import subprocess
-        from pathlib import Path
-
-        # Prefer pythonw.exe so the child doesn't pop up a console window.
-        exe = Path(sys.executable)
-        pythonw = exe.with_name("pythonw.exe")
-        python = str(pythonw) if pythonw.exists() else sys.executable
-
-        env = dict(os.environ, FLOATING_CLOCK_DETACHED="1")
+        env = dict(os.environ, **{_DETACHED_ENV: "1"})
         # DETACHED_PROCESS severs the current console; CREATE_NO_WINDOW guards against a black box.
-        creationflags = 0x00000008 | 0x00000200 | 0x08000000
+        creationflags = (
+            subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.CREATE_NO_WINDOW
+        )
         subprocess.Popen(
-            [python, "-m", "floating_clock", *sys.argv[1:]],
+            [str(autostart.gui_interpreter()), "-m", "floating_clock", *sys.argv[1:]],
             env=env,
             creationflags=creationflags,
             close_fds=True,

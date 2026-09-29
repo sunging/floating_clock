@@ -14,21 +14,24 @@ def is_supported() -> bool:
     return sys.platform == "win32"
 
 
+def gui_interpreter() -> Path:
+    """Return the current environment's pythonw.exe (no console window), else sys.executable."""
+    exe = Path(sys.executable)
+    pythonw = exe.with_name("pythonw.exe")
+    return pythonw if pythonw.exists() else exe
+
+
 def _launch_command() -> str:
     """Build the command line run at boot.
 
     - When packaged as an exe (PyInstaller, sys.frozen), run the exe directly.
-    - When run as a script, use pythonw.exe (no console window) to run
-      `-m floating_clock`, pointing at the current interpreter's directory
-      (the uv virtual environment).
+    - When run as a script, run `-m floating_clock` with the current
+      environment's interpreter (the uv virtual environment), preferring
+      pythonw.exe so no console window appears.
     """
-    exe = Path(sys.executable)
     if getattr(sys, "frozen", False):
-        return f'"{exe}"'
-    runner = exe.with_name("pythonw.exe")
-    if not runner.exists():
-        runner = exe
-    return f'"{runner}" -m floating_clock'
+        return f'"{Path(sys.executable)}"'
+    return f'"{gui_interpreter()}" -m floating_clock'
 
 
 def is_enabled() -> bool:

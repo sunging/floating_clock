@@ -1,42 +1,26 @@
-# Changelog
+# 变更记录
 
-## [0.2.0](https://github.com/sunging/floating_clock/compare/v0.1.0...v0.2.0) (2026-10-18)
+## 0.2.0 (2026-10-18)
 
+### 新功能
 
-### Features
+- 使用 C++17、Qt 6.12 Widgets 和 Meson 重写应用，运行时不再依赖 Python。
+- 保留透明置顶、鼠标穿透、移动模式、背景自动取色、多屏位置恢复、外观预览、闹钟重复、自定义 WAV、自启动和关屏抑制。
+- 提醒默认在 60 秒后停止，支持全局及单个闹钟设置 1～3600 秒超时；合并提醒各自独立到期。
+- 新增倒计时、秒表及计次控制面板，支持暂停、继续和重启恢复；切换浮窗显示不停止后台计时。
+- Windows 改用静态 Qt 单文件 EXE，零附带 DLL；ZIP 内仅包含同一 EXE，不再提供安装程序。
+- 提供 Linux AppImage、DEB，以及 macOS Intel、Apple Silicon DMG；增加四平台 CI、测试、打包和完整性校验发布流程。
+- 兼容旧版配置和闹钟 ID，提供旧配置导入；计时状态独立原子保存，单实例按配置目录隔离。
 
-* add detailed alarm configuration ([0012f16](https://github.com/sunging/floating_clock/commit/0012f169ad8461ff247112d49a8a70088ac87a55))
-* **alarm:** configurable ring sound and skip ringing when screen is off ([ccc18c2](https://github.com/sunging/floating_clock/commit/ccc18c20d4eb5205220a81369af382e810918855))
-* **alarm:** use dropdown hour/minute pickers for alarm time ([b7b492e](https://github.com/sunging/floating_clock/commit/b7b492e87f0475e8a6e27344e2538df7278294bf))
-* **app:** launch detached into the background on Windows ([683e4ac](https://github.com/sunging/floating_clock/commit/683e4ac7b07dd0d4e0de4de952f40e95affb217c))
-* **autostart:** add start-on-boot support ([7a8b307](https://github.com/sunging/floating_clock/commit/7a8b30715c7f0bc78b4698e5aeb9315f10299f72))
-* **clock:** auto-adjust text color to screen background ([8f21d43](https://github.com/sunging/floating_clock/commit/8f21d43c036339aa14629e94cfdc8fde185dd81e))
-* **clock:** keep clock and alarm popup within screen bounds ([bae3542](https://github.com/sunging/floating_clock/commit/bae3542fa63a9e27c5ba7bc5a8e08f8106adb1f2))
-* **clock:** live appearance preview and drag-to-move ([67104c2](https://github.com/sunging/floating_clock/commit/67104c2ec9740ebc0a21d07ea044abcccf454a37))
-* **clock:** scrollable alarm popup with stop button ([38eba4a](https://github.com/sunging/floating_clock/commit/38eba4ad35b0e19cf8353c872cc2c43393d15983))
-* **config:** persist settings to config.ini in working directory ([cb17f6a](https://github.com/sunging/floating_clock/commit/cb17f6a5c61df8d1db547e9192313b9f92ffa7f4))
-* **config:** store config under program dir instead of cwd ([96791dc](https://github.com/sunging/floating_clock/commit/96791dcaa3de5acb25e34722fde67e2d0414e082))
-* implement Windows floating clock (Python + uv + PySide6) ([2b9a844](https://github.com/sunging/floating_clock/commit/2b9a844b07d6666e7ce46dcb2762847ab63ad96f))
-* merge native C++ clock and release infrastructure ([80be9ea](https://github.com/sunging/floating_clock/commit/80be9ea433b10e3e664b64b8e96f9fd8d517495c))
-* migrate floating clock to C++ and standalone Windows packaging ([ada19a1](https://github.com/sunging/floating_clock/commit/ada19a1a73082c5bbaf15128afe0ff59e891e5f5))
-* **settings:** double-click an alarm row to edit it ([28fb33d](https://github.com/sunging/floating_clock/commit/28fb33d615602f246eda0f6e620b7f5b336e9690))
-* **settings:** use two-column layout for settings dialog ([c6e6db1](https://github.com/sunging/floating_clock/commit/c6e6db15596edc0bb50f4ed3ab6ad34f2c34cc92))
-* Windows floating clock (config file, live preview, drag-to-move) ([6ac5135](https://github.com/sunging/floating_clock/commit/6ac51359e1c50e0c03ff1589a3a601974b0c5f8c))
+### 修复与改进
 
+- 修复关闭鼠标穿透及移动模式下无法拖动时钟的问题，切换自动取色及移动后及时刷新颜色。
+- 收紧提醒正文与停止按钮的间距，短提醒紧凑显示，长内容保留滚动与可见的停止按钮。
+- 保留设置取消还原、编辑期间单次闹钟消费、并发提醒、休眠恢复和多屏拖动位置同步等行为。
+- 增加原生 Windows 桌面与 150% 缩放测试，以及 Linux ASan/UBSan、发行包启动和 DEB 升级卸载配置保留检查。
 
-### Bug Fixes
+### 发行说明
 
-* **alarm:** fire every alarm due in the same minute ([fbcbb48](https://github.com/sunging/floating_clock/commit/fbcbb4881fa8c52ec1f04f0efc4fa01013566dd7))
-* **app:** don't relaunch a frozen exe in the background ([c9ac0c1](https://github.com/sunging/floating_clock/commit/c9ac0c1eecf56828662c8fefb546a492037234c0))
-* **clock:** let a click on the alarm popup text stop the alarm ([ea7b075](https://github.com/sunging/floating_clock/commit/ea7b0756626d97c4bcaae26e6f8c3cba5e1d9229))
-* **clock:** restore display position without interrupting drags ([0dc73e9](https://github.com/sunging/floating_clock/commit/0dc73e9146f04791052148867f7f19156fa75a84))
-* **config:** use user dir for config when installed via pip/uv tool ([4eace76](https://github.com/sunging/floating_clock/commit/4eace76909d059495cbbb5c73c81f179fd1636bf))
-* **config:** validate loaded settings and give alarms stable ids ([0c23737](https://github.com/sunging/floating_clock/commit/0c23737aae78be97f81b47b21285a6691bbcfd84))
-* resolve Qt SDK warnings and runtime library paths ([102cd75](https://github.com/sunging/floating_clock/commit/102cd75a7c02c0939160fccbfd7927053a93cbff))
-* restore clock dragging and refresh adaptive colors immediately ([b098041](https://github.com/sunging/floating_clock/commit/b098041b355f5732c6b03ea3f9922a5f34c6cc2f))
-* **settings:** keep settings dialog on-screen under DPI scaling ([99c7e55](https://github.com/sunging/floating_clock/commit/99c7e553f8d19a9576907b9676f61845339f1501))
-* tighten reminder popup spacing ([9ffa618](https://github.com/sunging/floating_clock/commit/9ffa6187c143e6b01d38d3e5181d173fe04fbcf0))
-
-## 变更记录
-
-版本记录由 Release Please 的版本 PR 维护。
+- 最低环境为 Windows 10/11 x64、Ubuntu 24.04 同等环境，以及 macOS 14.4+。
+- 首版 Windows 无证书签名，macOS 使用临时签名；真实关屏、音频输出、多屏及系统权限交互仍需实机验收。
+- 发布同时提供 SHA256SUMS、构建信息、应用源码和 Windows 静态链接所用的 Qt Base 对应源码。

@@ -919,6 +919,27 @@ private slots:
         window.show();
         QApplication::processEvents();
         QVERIFY(window.grab().save(directory + "/reminder.png"));
+        config.popupFlash = false;
+        config.popupLayout = "label_only";
+        config.fontSize = 24;
+        config.popupFontScale = 1;
+        window.applyConfig(config);
+        window.setReminder(alarm.label, QStringLiteral("起身活动，喝杯水。"));
+        QApplication::processEvents();
+        QVERIFY(window.grab().save(directory + "/reminder-short.png"));
+        config.fontSize = 8;
+        window.applyConfig(config);
+        window.setReminder(QStringLiteral("提醒"), QString());
+        QApplication::processEvents();
+        QVERIFY(window.grab().save(directory + "/reminder-small.png"));
+        config.fontSize = 24;
+        window.applyConfig(config);
+        window.setReminder(alarm.label, alarm.content.repeated(2));
+        QApplication::processEvents();
+        QVERIFY(window.grab().save(directory + "/reminder-wrapped.png"));
+        window.setReminder(alarm.label, (alarm.content + '\n').repeated(30));
+        QApplication::processEvents();
+        QVERIFY(window.grab().save(directory + "/reminder-long.png"));
     }
     void noTrayRetainsControlUntilQuit() {
         FakeTime time;

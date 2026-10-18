@@ -11,13 +11,46 @@
 #include <QPainter>
 #include <QScreen>
 #include <QScrollBar>
+#include <QTextBlock>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QVBoxLayout>
 #include <QWindow>
 #include <algorithm>
 #include <cmath>
 
 namespace fc {
+
+namespace {
+int reminderTextHeight(const QPlainTextEdit *text, int width, int limit) {
+    const auto *document = text->document();
+    const qreal margin = document->documentMargin();
+    // QPlainTextEdit reserves one extra pixel when deciding whether the last line fits.
+    qreal height = 2 * margin + 1;
+    // Match QPlainTextEdit's wrapping and line leading instead of estimating a rich-text height.
+    for (auto block = document->begin(); block.isValid(); block = block.next()) {
+        QTextLayout paragraph(block.text(), text->font(), text->viewport());
+        paragraph.setTextOption(document->defaultTextOption());
+        paragraph.beginLayout();
+        while (true) {
+            auto line = paragraph.createLine();
+            if (!line.isValid())
+                break;
+            line.setLeadingIncluded(true);
+            line.setLineWidth(std::max(qreal(1), width - 2 * margin));
+            height += line.height();
+            if (line.leading() < 0)
+                height += std::ceil(line.leading());
+            if (height >= limit)
+                break;
+        }
+        paragraph.endLayout();
+        if (height >= limit)
+            return limit;
+    }
+    return std::min(limit, int(std::ceil(height)));
+}
+} // namespace
 
 QRect screenAreaFor(const QRect &window, const QList<QRect> &screens, const QRect &fallback) {
     QRect best = fallback;
@@ -57,12 +90,16 @@ ClockWindow::ClockWindow(QWidget *parent, BackgroundSampler sampler)
     panel_ = new QWidget(this);
     panel_->setObjectName("reminderPanel");
     auto *popup = new QVBoxLayout(panel_);
+    popup->setContentsMargins(8, 8, 8, 8);
+    popup->setSpacing(6);
     text_ = new QPlainTextEdit(panel_);
     text_->setObjectName("reminderText");
     text_->setReadOnly(true);
     text_->setTextInteractionFlags(Qt::NoTextInteraction);
     text_->setFrameShape(QFrame::NoFrame);
     text_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    text_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    text_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     text_->setMinimumSize(0, 0);
     text_->viewport()->installEventFilter(this);
     popup->addWidget(text_, 1);
@@ -225,17 +262,25 @@ void ClockWindow::fit() {
         QFont font(QStringLiteral("Arial"));
         font.setPointSize(std::min(fontSize, std::max(8, maxHeight / 6)));
         text_->setFont(font);
-        const QFontMetricsF metrics(font);
-        double width = 200;
+        const auto outer = layout()->contentsMargins();
+        const auto inner = panel_->layout()->contentsMargins();
+        const int horizontalPadding = outer.left() + outer.right() + inner.left() + inner.right();
+        const int verticalPadding = outer.top() + outer.bottom() + inner.top() + inner.bottom() +
+                                    panel_->layout()->spacing() + stop_->sizeHint().height();
+        const QFontMetricsF metrics(font, text_->viewport());
+        qreal width = std::max(200, stop_->sizeHint().width() + horizontalPadding);
         for (const auto &line : text_->toPlainText().split('\n'))
-            width = std::max(width, metrics.horizontalAdvance(line) + 60);
+            width =
+                std::max(width, metrics.horizontalAdvance(line) +
+                                    2 * text_->document()->documentMargin() + horizontalPadding);
         const int wantedWidth = std::min(maxWidth, int(std::ceil(width)));
-        QTextDocument document;
-        document.setDefaultFont(font);
-        document.setPlainText(text_->toPlainText());
-        document.setTextWidth(std::max(30, wantedWidth - 60));
-        const int wantedHeight = std::min(maxHeight, int(document.size().height()) + 80);
-        resize(wantedWidth, std::max(std::min(120, maxHeight), wantedHeight));
+        const int availableTextHeight = std::max(1, maxHeight - verticalPadding);
+        const int textHeight =
+            reminderTextHeight(text_, wantedWidth - horizontalPadding, availableTextHeight);
+        // An old scrollbar must not narrow a newly fitted document and create extra wrapped lines.
+        text_->setVerticalScrollBarPolicy(textHeight < availableTextHeight ? Qt::ScrollBarAlwaysOff
+                                                                           : Qt::ScrollBarAsNeeded);
+        resize(wantedWidth, std::min(maxHeight, textHeight + verticalPadding));
     } else {
         QFont font(QStringLiteral("Arial"));
         font.setPointSize(config_.fontSize);

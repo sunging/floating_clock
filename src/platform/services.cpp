@@ -5,7 +5,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QPixmap>
 #include <QSaveFile>
+#include <QScreen>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
@@ -76,6 +78,26 @@ QString desktopQuote(QString value) {
 }
 #endif
 } // namespace
+
+QImage captureScreenRegion(const QRect &geometry) {
+    if (QGuiApplication::platformName().startsWith("wayland"))
+        return {};
+    auto *screen = QGuiApplication::screenAt(geometry.center());
+    if (!screen)
+        screen = QGuiApplication::primaryScreen();
+    if (!screen)
+        return {};
+    const auto pixmap = screen->grabWindow(0);
+    if (pixmap.isNull())
+        return {};
+    const qreal dpr = pixmap.devicePixelRatio();
+    const QRect local =
+        geometry.intersected(screen->geometry()).translated(-screen->geometry().topLeft());
+    const QRect pixels(qRound(local.x() * dpr), qRound(local.y() * dpr),
+                       qRound(local.width() * dpr), qRound(local.height() * dpr));
+    const auto captured = pixels.intersected(pixmap.rect());
+    return captured.isEmpty() ? QImage() : pixmap.copy(captured).toImage();
+}
 
 PlatformServices::PlatformServices(QObject *parent) : QObject(parent) {
     const auto backend = QGuiApplication::platformName();
@@ -218,6 +240,10 @@ bool PlatformServices::autostartEnabled() const {
 
 bool PlatformServices::requestScreenSampling() {
     return capabilities_.screenSampling;
+}
+
+QImage PlatformServices::sampleBackground(const QRect &geometry) const {
+    return capabilities_.screenSampling ? captureScreenRegion(geometry) : QImage();
 }
 
 void PlatformServices::handleSleep(bool asleep) {

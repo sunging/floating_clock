@@ -18,7 +18,9 @@ ApplicationController::ApplicationController(const ConfigStore &store, const Tim
     config_ = store_.load(&warning);
     appearance_ = config_;
     timers_.restore(store_.loadRuntime(&warning));
-    clock_ = std::make_unique<ClockWindow>();
+    clock_ = std::make_unique<ClockWindow>(nullptr, [this](const QRect &geometry) {
+        return integration_ ? platform_.sampleBackground(geometry) : QImage();
+    });
     if (!integration_)
         clock_->setAttribute(Qt::WA_DontShowOnScreen);
     clock_->applyConfig(config_);
@@ -107,7 +109,8 @@ ApplicationController::ApplicationController(const ConfigStore &store, const Tim
         }
     }
     applyClickThrough();
-    lastTick_ = lastSample_ = lastSnapshot_ = time_.elapsedNow();
+    lastTick_ = lastSnapshot_ = time_.elapsedNow();
+    lastSample_ = lastTick_ - 2000;
     tick();
     connect(&tickTimer_, &QTimer::timeout, this, &ApplicationController::tick);
     tickTimer_.start(100);
@@ -271,8 +274,9 @@ void ApplicationController::setMoveMode(bool enabled) {
 }
 
 void ApplicationController::applyClickThrough() {
-    platform_.setClickThrough(clock_.get(),
-                              config_.clickThrough && !moveMode_ && !ringing_ && !previewing_);
+    const bool through = config_.clickThrough && !moveMode_ && !ringing_ && !previewing_;
+    clock_->setInteractive(!through);
+    platform_.setClickThrough(clock_.get(), through);
 }
 
 void ApplicationController::showControl() {

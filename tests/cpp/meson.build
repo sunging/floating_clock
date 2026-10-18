@@ -8,3 +8,8 @@ test('clock', test_exe, env: ['QT_QPA_PLATFORM=offscreen'], timeout: 90,
 test('smoke', clock_exe,
   args: ['--smoke-test', '--config', meson.current_build_dir() / 'smoke-config/config.ini'],
   env: ['QT_QPA_PLATFORM=offscreen'], timeout: 30)
+if host_machine.system() == 'windows'
+  native_ui_moc = qt.compile_moc(sources: 'windows_ui.cpp', dependencies: qt_dep)
+  native_ui_exe = executable('windows-ui-tests', 'windows_ui.cpp', native_ui_moc,
+    resources, plugin_sources, dependencies: clock_dep)
+endif

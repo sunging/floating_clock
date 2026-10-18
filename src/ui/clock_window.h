@@ -1,11 +1,13 @@
 #pragma once
 
 #include "core/model.h"
+#include <QImage>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTimer>
 #include <QWidget>
+#include <functional>
 
 namespace fc {
 
@@ -15,12 +17,14 @@ QPoint clampedPosition(const QRect &window, const QRect &area);
 class ClockWindow : public QWidget {
     Q_OBJECT
 public:
-    explicit ClockWindow(QWidget *parent = nullptr);
+    using BackgroundSampler = std::function<QImage(const QRect &)>;
+    explicit ClockWindow(QWidget *parent = nullptr, BackgroundSampler sampler = {});
     void applyConfig(const Config &config);
     void setDisplay(const QString &text, const QString &clockTime);
     void setReminder(const QString &title, const QString &content);
     void clearReminder();
     void setMoveHint(bool enabled);
+    void setInteractive(bool enabled);
     void restorePosition();
     void sampleBackground();
     bool isDragging() const;
@@ -33,6 +37,7 @@ signals:
     void controlRequested();
 
 protected:
+    void paintEvent(QPaintEvent *event) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -44,6 +49,7 @@ private:
     void fit();
     QRect area() const;
     Config config_;
+    BackgroundSampler sampler_;
     QLabel *label_;
     QWidget *panel_;
     QPlainTextEdit *text_;
@@ -57,6 +63,7 @@ private:
     bool reminder_ = false;
     bool phase_ = false;
     bool moveHint_ = false;
+    bool interactive_ = true;
     bool dragging_ = false;
     bool moved_ = false;
     QPoint dragOffset_;

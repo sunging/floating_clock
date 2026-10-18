@@ -38,6 +38,7 @@ DEB 使用 `sudo apt install ./floating-clock-*.deb` 安装。macOS 将 DMG 中�
 
 - **控制面板**：托盘菜单「控制面板…」，或对可点击的浮窗右键；无托盘时关闭控制面板会退出应用。
 - **移动**：托盘「移动时钟」或控制面板「移动浮窗」，拖动后恢复原穿透偏好。
+- **自动取色**：在设置「外观」中勾选「自动适配背景色」，默认关闭。开启、预览或移动结束后立即更新，平时每 2 秒重新采样。
 - **停止提醒**：点击提醒、停止按钮或托盘菜单；不操作也会在期限内停止声音、闪烁和弹窗。
 - **计时**：控制面板分别提供倒计时和秒表页，顶部选择浮窗显示内容。
 - **退出**：控制面板或托盘「退出」；存在托盘时关闭控制面板只会隐藏它。
@@ -123,6 +124,17 @@ python -m ruff check scripts tests/tooling
 python -m unittest discover -s tests/tooling -v
 python scripts/test.py build-static
 python scripts/package.py windows --build build-static --qt .tools/qt-static/6.12.0/mingw_64
+```
+
+Windows 另有原生桌面测试，验证透明区域鼠标命中、拖动和黑白背景取色；不会移动真实鼠标或修改用户配置：
+
+```powershell
+$env:QT_QPA_PLATFORM = "windows"
+.\build-static\tests\cpp\windows-ui-tests.exe
+$env:QT_SCALE_FACTOR = "1.5"
+.\build-static\tests\cpp\windows-ui-tests.exe
+Remove-Item Env:QT_SCALE_FACTOR
+Remove-Item Env:QT_QPA_PLATFORM
 ```
 
 Windows 不生成安装程序；Meson 构建时自动嵌入翻译与许可文本，打包验证单文件独立运行。

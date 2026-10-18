@@ -2,6 +2,7 @@
 
 #include "core/model.h"
 #include <QAbstractNativeEventFilter>
+#include <QImage>
 #include <QObject>
 #include <QTimer>
 #include <QWidget>
@@ -11,6 +12,8 @@
 #endif
 
 namespace fc {
+
+QImage captureScreenRegion(const QRect &geometry);
 
 enum class DisplayState { Unknown, On, Off };
 struct Capabilities {
@@ -33,6 +36,7 @@ public:
     virtual bool setAutostart(bool enabled, const QString &configPath, QString *error);
     virtual bool autostartEnabled() const;
     virtual bool requestScreenSampling();
+    virtual QImage sampleBackground(const QRect &geometry) const;
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
 
 signals:

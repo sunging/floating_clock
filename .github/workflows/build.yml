@@ -91,6 +91,19 @@ jobs:
           python scripts/run_logged.py .cache/logs/compile.log meson compile -C build
       - name: Test
         run: python scripts/run_logged.py .cache/logs/test.log python scripts/test.py build
+      - name: Verify Windows desktop color and mouse interaction
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          python scripts/run_logged.py .cache/logs/windows-ui.log build/tests/cpp/windows-ui-tests.exe -o build/tests/cpp/windows-ui-tests.txt,txt -o build/tests/cpp/windows-ui-tests.xml,junitxml
+      - name: Verify Windows high-DPI interaction
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+          QT_SCALE_FACTOR: '1.5'
+        run: |
+          python scripts/run_logged.py .cache/logs/windows-ui-150.log build/tests/cpp/windows-ui-tests.exe -o build/tests/cpp/windows-ui-150.txt,txt -o build/tests/cpp/windows-ui-150.xml,junitxml
       - name: Build and verify packages
         if: runner.os != 'Linux'
         env:
@@ -124,6 +137,8 @@ jobs:
           path: |
             build/meson-logs/
             build/tests/cpp/native-tests.*
+            build/tests/cpp/windows-ui*.txt
+            build/tests/cpp/windows-ui*.xml
             .cache/logs/
           include-hidden-files: true
           retention-days: 14

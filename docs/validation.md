@@ -5,7 +5,8 @@
 
 ## 自动验证
 
-- Windows 静态 Qt Test：117 项通过，0 失败、0 跳过，包含 4 项原生 WAV 后端测试；另有独立的 Meson 启动烟雾测试。
+- Windows 静态 Qt Test：121 项通过，0 失败、0 跳过，包含 4 项原生 WAV 后端测试；另有独立的 Meson 启动烟雾测试。
+- Windows 桌面集成测试：100% 和 150% 缩放下各 20 项通过，覆盖实际黑白背景取色、3 种字号、4 档透明度，以及关闭穿透和移动模式的系统鼠标命中、拖动。修复前这两种模式的透明边缘命中测试均失败。
 - 构建与发布脚本：35 项通过。其中 21 项发布校验覆盖平台完整性、提交/版本及哈希、单文件分发、EXE/ZIP 一致、Qt 对应源码、草稿查找及重试、版本 PR 派发检查，以及远端上传状态、完整资产集合和 SHA-256；异常时保留草稿。
 - 其余脚本测试包括 3 项静态链接、4 项内嵌资源、4 项下载及失败清理、3 项 SDK 架构选择和缓存复用；覆盖私有库、资源对象、许可与翻译、含空格路径及失效 SDK。实际 Meson 集成测试验证修改许可文件后会自动重新生成内嵌资源。
 - C++ 格式检查、编译警告视为错误、构建脚本 Ruff、Actions actionlint 检查通过。
@@ -23,6 +24,8 @@
 | 校时、倒计时重启、秒表暂停恢复和计次 | countdownLifecycleAndClockChanges / countdownRestart / stopwatchRestartAndLaps |
 | 较新版本的配置及计时状态禁止被旧版覆盖 | failedSaveAndFutureSchema / futureRuntimeIsPreserved |
 | 负坐标、长内容、滚动条、无托盘退出、配置目录隔离 | geometry / popupBoundaries / popupKeepsScrollAtBottom / noTrayRetainsControlUntilQuit / singleInstanceIsolation |
+| 自动取色即时预览、移动后刷新、采样失败保留颜色、交互透明度还原及拖动保存位置 | autoColorRefreshAndFailure / interactiveSurfaceRestoresTransparency / appDragPersistsPosition |
+| Windows 原生透明区域鼠标命中及黑白背景捕获 | `tests/cpp/windows_ui.cpp`；使用独立测试窗口，不移动真实鼠标、不访问用户配置、声音或自启动 |
 | 静态 Qt、Windows/离屏/样式插件、按钮图标和拖动光标资源 | qtLinkageAndStaticPlugins；发行包启动测试 |
 | 内嵌中文翻译、完整许可文本及只读查看界面 | embeddedWindowsTranslationAndLicenses；发行包启动测试 |
 
@@ -61,6 +64,7 @@ Qt Base 的 51.22 MB 对应源码作为独立发行文件，不放入 EXE 或 ZI
 ## CI 与实机验收边界
 
 四目标工作流、Linux ASan/UBSan、DEB 安装/升级/卸载保留配置检查，以及 Release 草稿到公开发行的校验已配置。
+Windows CI 增加原生桌面测试及 150% 缩放测试，与离屏测试分别记录报告，避免只验证 Qt 事件处理而遗漏系统鼠标命中。
 发布复用的构建工作流包含 ASan/UBSan，任一构建或检查失败均不会进入公开发布。
 已核对 Qt 官方 6.12 SDK 元数据：Linux 下载架构为 `linux_gcc_64`，安装目录仍是 `gcc_64`；Wayland 客户端在基础 SDK 中。
 Linux/macOS 构建及发行包、正式签名、公证、线上 Actions 和首发尚未在本地 Windows 环境实际执行。

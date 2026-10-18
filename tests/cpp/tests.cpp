@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLibraryInfo>
+#include <QMouseEvent>
 #include <QPluginLoader>
 #include <QScrollBar>
 #include <QSettings>
@@ -647,6 +648,97 @@ private slots:
         QCOMPARE(fc::clampedPosition(QRect(-4000, 9000, 300, 100), primary), QPoint(0, 980));
         QCOMPARE(fc::clampedPosition(QRect(0, 0, 4000, 2000), left), left.topLeft());
         QCOMPARE(fc::screenAreaFor(QRect(9000, 9000, 300, 100), {primary, left}, primary), primary);
+    }
+    void autoColorRefreshAndFailure() {
+        QImage background(32, 16, QImage::Format_RGB32);
+        background.fill(Qt::white);
+        int samples = 0;
+        fc::ClockWindow window(nullptr, [&](const QRect &) {
+            ++samples;
+            return background;
+        });
+        window.setDisplay("08:00:00", "08:00:00");
+        window.show();
+        fc::Config config;
+        config.color = "#FF00FF";
+        config.autoColor = true;
+        window.applyConfig(config);
+        const auto *label = window.findChild<QLabel *>();
+        QVERIFY(label);
+        QCOMPARE(samples, 1);
+        QVERIFY(label->styleSheet().contains(config.lightBackgroundColor));
+        background.fill(Qt::black);
+        config.posX = 40;
+        config.posY = 50;
+        window.applyConfig(config);
+        QCOMPARE(samples, 2);
+        QVERIFY(label->styleSheet().contains(config.darkBackgroundColor));
+        background = QImage();
+        window.sampleBackground();
+        QVERIFY(label->styleSheet().contains(config.darkBackgroundColor));
+        config.autoColor = false;
+        window.applyConfig(config);
+        QCOMPARE(samples, 3);
+        QVERIFY(label->styleSheet().contains(config.color));
+    }
+    void interactiveSurfaceRestoresTransparency() {
+        fc::ClockWindow window;
+        window.setDisplay("08:00:00", "08:00:00");
+        window.setInteractive(false);
+        QCOMPARE(window.grab().toImage().pixelColor(2, 2).alpha(), 0);
+        window.setInteractive(true);
+        QVERIFY(window.grab().toImage().pixelColor(2, 2).alpha() > 0);
+        window.setInteractive(false);
+        QCOMPARE(window.grab().toImage().pixelColor(2, 2).alpha(), 0);
+    }
+    void appDragPersistsPosition_data() {
+        QTest::addColumn<bool>("moveMode");
+        QTest::newRow("click-through disabled") << false;
+        QTest::newRow("temporary move mode") << true;
+    }
+    void appDragPersistsPosition() {
+        QFETCH(bool, moveMode);
+        QTemporaryDir directory;
+        fc::ConfigStore store(directory.filePath("config.ini"));
+        fc::Config config;
+        config.posX = 100;
+        config.posY = 100;
+        config.clickThrough = moveMode;
+        QVERIFY(store.save(config));
+        FakeTime time;
+        FakePlatform platform;
+        FakeSound sound;
+        fc::ApplicationController controller(store, time, platform, sound, false);
+        if (moveMode)
+            controller.setMoveMode(true);
+        auto &window = controller.clock();
+        const auto start = window.pos();
+        const QPointF local(2, 2);
+        const QPointF global = window.mapToGlobal(local.toPoint());
+        QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton,
+                          Qt::NoModifier);
+        QApplication::sendEvent(&window, &press);
+        QVERIFY(window.isDragging());
+        const QPoint offset(80, 30);
+        QMouseEvent move(QEvent::MouseMove, local + offset, global + offset, Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(&window, &move);
+        time.advance(1000);
+        controller.tick();
+        window.restorePosition();
+        QCOMPARE(window.pos(), start + offset);
+        QMouseEvent release(QEvent::MouseButtonRelease, local, global + offset, Qt::LeftButton,
+                            Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(&window, &release);
+        QVERIFY(!window.isDragging());
+        QCOMPARE(window.pos(), start + offset);
+        QCOMPARE(controller.config().posX.value(), window.x());
+        QCOMPARE(controller.config().posY.value(), window.y());
+        QCOMPARE(store.load().posX.value(), window.x());
+        QCOMPARE(store.load().posY.value(), window.y());
+        QCOMPARE(store.load().clickThrough, moveMode);
+        QCOMPARE(platform.through, moveMode);
+        QCOMPARE(platform.startupWrites, 0);
     }
     void popupBoundaries_data() {
         QTest::addColumn<int>("size");

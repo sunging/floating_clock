@@ -1,4 +1,5 @@
 #include "ui/clock_window.h"
+#include "platform/services.h"
 
 #include <QApplication>
 #include <QColor>
@@ -7,6 +8,7 @@
 #include <QGuiApplication>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QPainter>
 #include <QScreen>
 #include <QScrollBar>
 #include <QTextDocument>
@@ -39,7 +41,8 @@ QPoint clampedPosition(const QRect &window, const QRect &area) {
     return {std::clamp(window.x(), area.left(), right), std::clamp(window.y(), area.top(), bottom)};
 }
 
-ClockWindow::ClockWindow(QWidget *parent) : QWidget(parent) {
+ClockWindow::ClockWindow(QWidget *parent, BackgroundSampler sampler)
+    : QWidget(parent), sampler_(sampler ? std::move(sampler) : captureScreenRegion) {
     setWindowTitle(QStringLiteral("浮动时钟"));
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
@@ -89,6 +92,8 @@ void ClockWindow::applyConfig(const Config &config) {
     render();
     if (!dragging_)
         restorePosition();
+    if (isVisible())
+        sampleBackground();
 }
 
 QString ClockWindow::formattedClock(const Config &config, const QDateTime &now) {
@@ -131,6 +136,24 @@ void ClockWindow::clearReminder() {
 void ClockWindow::setMoveHint(bool enabled) {
     moveHint_ = enabled;
     render();
+}
+
+void ClockWindow::setInteractive(bool enabled) {
+    if (interactive_ == enabled)
+        return;
+    interactive_ = enabled;
+    update();
+}
+
+void ClockWindow::paintEvent(QPaintEvent *event) {
+    Q_UNUSED(event)
+    if (!interactive_)
+        return;
+    // Windows ignores alpha-zero pixels during layered-window hit testing.
+    // Keep an almost invisible input surface even at the lowest supported opacity.
+    QPainter painter(this);
+    const int alpha = int(std::ceil(2.0 / std::max(0.1, windowOpacity())));
+    painter.fillRect(rect(), QColor(0, 0, 0, alpha));
 }
 
 QRect ClockWindow::area() const {
@@ -238,23 +261,10 @@ void ClockWindow::fit() {
 void ClockWindow::sampleBackground() {
     if (!config_.autoColor || reminder_ || QGuiApplication::platformName().startsWith("wayland"))
         return;
-    auto *screen = QGuiApplication::screenAt(frameGeometry().center());
-    if (!screen)
-        screen = QGuiApplication::primaryScreen();
-    if (!screen)
+    const auto background = sampler_(frameGeometry());
+    if (background.isNull())
         return;
-    // Grab a whole screen to avoid platform-dependent grabWindow coordinate conventions.
-    const auto pixmap = screen->grabWindow(0);
-    if (pixmap.isNull())
-        return;
-    const qreal dpr = pixmap.devicePixelRatio();
-    const QRect local =
-        frameGeometry().intersected(screen->geometry()).translated(-screen->geometry().topLeft());
-    const QRect pixels(qRound(local.x() * dpr), qRound(local.y() * dpr),
-                       qRound(local.width() * dpr), qRound(local.height() * dpr));
-    const auto image = pixmap.copy(pixels.intersected(pixmap.rect())).toImage().scaled(8, 8);
-    if (image.isNull())
-        return;
+    const auto image = background.scaled(8, 8, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
     QVector<double> luminances;
     for (int y = 0; y < image.height(); ++y)
         for (int x = 0; x < image.width(); ++x) {
@@ -262,8 +272,11 @@ void ClockWindow::sampleBackground() {
             luminances.append(0.299 * color.red() + 0.587 * color.green() + 0.114 * color.blue());
         }
     std::sort(luminances.begin(), luminances.end());
-    autoColor_ = luminances.at(luminances.size() / 2) > 140 ? config_.lightBackgroundColor
-                                                            : config_.darkBackgroundColor;
+    const auto color = luminances.at(luminances.size() / 2) > 140 ? config_.lightBackgroundColor
+                                                                  : config_.darkBackgroundColor;
+    if (autoColor_ == color)
+        return;
+    autoColor_ = color;
     render();
 }
 

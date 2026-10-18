@@ -69,6 +69,17 @@ def translations(destination, qt):
     shutil.copy2(qt / "translations/qtbase_zh_CN.qm", target)
 
 
+def verify_deployment_paths(executable, qt):
+    commands = (
+        [["otool", "-L"], ["otool", "-l"]] if platform.system() == "Darwin" else [["readelf", "--dynamic"]]
+    )
+    for command in commands:
+        references = subprocess.check_output([*command, str(executable)], text=True)
+        if str(qt.resolve()) in references:
+            raise RuntimeError("Deployed executable still references the build Qt SDK")
+    print("Deployment library paths are independent of the build Qt SDK", flush=True)
+
+
 def smoke(executable, work, platform_name, *launcher_arguments, linkage="shared"):
     config = work / "smoke" / "config.ini"
     environment = os.environ.copy()
@@ -198,6 +209,7 @@ def linux(build, output, qt, work):
     )
     licenses(appdir / "usr/share/floating-clock", qt)
     translations(appdir / "usr/share/floating-clock", qt)
+    verify_deployment_paths(appdir / "usr/bin/floating-clock", qt)
     smoke(appdir / "usr/bin/floating-clock", work, "linux")
     run(deploy, "--appdir", appdir, "--output", "appimage", env=environment)
     if not appimage.is_file():
@@ -283,6 +295,7 @@ def macos(build, output, qt, work):
             stream,
         )
     run(qt / "bin/macdeployqt", application, "-always-overwrite")
+    verify_deployment_paths(binary, qt)
     licenses(resources, qt)
     translations(resources, qt)
     sign_mac_app(application, work)

@@ -48,4 +48,5 @@ if host_machine.system() == 'windows'
     include_directories: [inc, include_directories('../resources')])
 endif
 clock_exe = executable('floating-clock', app_sources, resources,
-  dependencies: clock_dep, win_subsystem: 'windows', install: true)
+  dependencies: clock_dep, build_rpath: qt_runtime_path,
+  win_subsystem: 'windows', install: true)

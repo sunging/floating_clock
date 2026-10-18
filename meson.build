@@ -27,7 +27,12 @@ if get_option('static_qt')
   add_project_arguments('-DFC_STATIC_QT', language: 'cpp')
   add_project_link_arguments('-static', '-Wl,--gc-sections', language: 'cpp')
 else
-  qt_dep = dependency('qt6', version: '>=6.12.0', modules: qt_modules)
+  qt_dep = dependency('qt6', version: '>=6.12.0', modules: qt_modules,
+    include_type: 'system')
+endif
+qt_runtime_path = ''
+if host_machine.system() != 'windows'
+  qt_runtime_path = qt_dep.get_variable(configtool: 'QT_INSTALL_LIBS', pkgconfig: 'libdir')
 endif
 cpp = meson.get_compiler('cpp')
 if cpp.get_id() == 'msvc'

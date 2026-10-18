@@ -91,16 +91,18 @@ jobs:
             .tools/deploy
             .cache/qtbase-*.tar.xz
           key: sdk-${{ matrix.target }}-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py', 'scripts/build_static_qt.py', 'scripts/requirements-build.txt') }}
-      - name: Check formatting and tooling
-        run: |
-          python scripts/check_format.py
-          python -m ruff check scripts tests/tooling
-          python -m ruff format --check scripts tests/tooling
-          python -m unittest discover -s tests/tooling -v
-      - name: Configure and compile
-        run: |
-          python scripts/run_logged.py .cache/logs/configure.log meson setup build --buildtype=release -Dstatic_qt=${{ runner.os == 'Windows' && 'true' || 'false' }}
-          python scripts/run_logged.py .cache/logs/compile.log meson compile -C build
+      - name: Check C++ formatting
+        run: python scripts/check_format.py
+      - name: Check Python lint
+        run: python -m ruff check scripts tests/tooling
+      - name: Check Python formatting
+        run: python -m ruff format --check scripts tests/tooling
+      - name: Test build and release tooling
+        run: python -m unittest discover -s tests/tooling -v
+      - name: Configure
+        run: python scripts/run_logged.py .cache/logs/configure.log meson setup build --buildtype=release -Dstatic_qt=${{ runner.os == 'Windows' && 'true' || 'false' }}
+      - name: Compile
+        run: python scripts/run_logged.py .cache/logs/compile.log meson compile -C build
       - name: Test
         run: python scripts/run_logged.py .cache/logs/test.log python scripts/test.py build
       - name: Verify Windows desktop color and mouse interaction

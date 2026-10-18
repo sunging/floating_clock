@@ -56,18 +56,22 @@ private slots:
         QFETCH(int, fontSize);
         QFETCH(double, opacity);
         DesktopFixture fixture(fontSize, opacity);
+        QVERIFY(QTest::qWaitForWindowExposed(&fixture.background));
         QVERIFY(QTest::qWaitForWindowExposed(&fixture.clock));
-        QTest::qWait(150);
         const auto *label = fixture.clock.findChild<QLabel *>();
         QVERIFY(label);
-        fixture.clock.sampleBackground();
-        QVERIFY2(label->styleSheet().contains(fixture.config.lightBackgroundColor),
+        const auto waitForColor = [&](const QString &color) {
+            return QTest::qWaitFor(
+                [&] {
+                    fixture.clock.sampleBackground();
+                    return label->styleSheet().contains(color);
+                },
+                3000);
+        };
+        QVERIFY2(waitForColor(fixture.config.lightBackgroundColor),
                  qPrintable(label->styleSheet()));
         fixture.background.setStyleSheet("background: black;");
-        QTest::qWait(150);
-        fixture.clock.sampleBackground();
-        QVERIFY2(label->styleSheet().contains(fixture.config.darkBackgroundColor),
-                 qPrintable(label->styleSheet()));
+        QVERIFY2(waitForColor(fixture.config.darkBackgroundColor), qPrintable(label->styleSheet()));
     }
     void interactiveClockHitTest_data() {
         QTest::addColumn<bool>("moveMode");
@@ -87,15 +91,14 @@ private slots:
         platform.setClickThrough(&fixture.clock, true);
         platform.setClickThrough(&fixture.clock, false);
         QVERIFY(QTest::qWaitForWindowExposed(&fixture.clock));
-        QTest::qWait(100);
         const auto window = reinterpret_cast<HWND>(fixture.clock.winId());
         RECT bounds{};
         QVERIFY(GetWindowRect(window, &bounds));
         // Probe a transparent margin without moving the user's actual mouse pointer.
         const POINT point{bounds.left + 2, bounds.top + 2};
-        const auto hit = GetAncestor(WindowFromPoint(point), GA_ROOT);
-        QVERIFY2(hit == window,
-                 "Windows routes the clock's transparent margin to the window below");
+        QTRY_VERIFY2_WITH_TIMEOUT(
+            GetAncestor(WindowFromPoint(point), GA_ROOT) == window,
+            "Windows routes the clock's transparent margin to the window below", 3000);
         const QPoint start = fixture.clock.pos();
         const QPointF local(2, 2);
         const QPointF global = fixture.clock.mapToGlobal(local.toPoint());

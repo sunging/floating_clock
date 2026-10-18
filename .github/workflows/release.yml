@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '重试已有草稿版本，例如 v0.2.0'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    outputs:
+      ready: ${{ steps.metadata.outputs.ready }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      sha: ${{ steps.metadata.outputs.sha }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        id: release
+        if: github.event_name == 'push'
+        with:
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: main
+      - name: Run CI on version PRs and prepare draft release
+        id: metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+          RETRY_TAG: ${{ github.event.inputs.tag }}
+        run: python scripts/release.py prepare
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+      sign: true
+    secrets: inherit
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: packages-*
+          path: dist
+          merge-multiple: true
+      - name: Verify all artifacts and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: python scripts/release.py publish

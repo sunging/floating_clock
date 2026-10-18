@@ -1,101 +1,78 @@
 # AGENTS.md
 
-Guidance for AI agents and contributors working in this repository.
+Floating Clock is a C++17 / Qt 6.12 Widgets desktop application built with Meson and Ninja.
+Python 3.12+ is build tooling only; there is no Python application runtime.
 
-## Project
+## Rules
 
-Windows desktop **floating clock**: frameless, always-on-top, translucent,
-click-through, with alarms. Built with **Python + [uv](https://docs.astral.sh/uv/) + PySide6 (Qt)**.
+- Keep user-facing text and README in Chinese; comments and docstrings in English.
+- Use English Conventional Commits. Do not commit, push, tag or publish unless requested.
+- Keep verification records, build logs and local reports in ignored .cache/ storage, never in Git.
+  Documentation and code must use portable examples without personal paths, local usernames,
+  hostnames, private network addresses or details identifying the developer's machine.
+- Preserve user configuration and running applications. Tests must inject temporary configuration,
+  fake time, fake sound and fake platform services. Never test against real autostart or alarm settings.
+- All settings belong to ConfigStore; add scalars to its shared field table and roundtrip test.
+  Runtime timer state is a separate atomic JSON file, not part of a settings dialog draft.
+- Keep native platform calls in src/platform with explicit capabilities. Unknown display power is not
+  screen-off. Wayland limitations must remain visible to users.
+- Windows releases use the locked static Qt SDK and static compiler runtime. Import required plugins
+  explicitly and embed translations, notices and the build receipt. Ship only a standalone EXE,
+  with corresponding Qt Base source. Do not add Windows ZIP bundles or installers.
+- Always recompute effective click-through through ApplicationController::applyClickThrough().
+  Move mode, reminders and preview are transient overrides, not persisted preferences.
+- Timeouts are finite (1–3600 seconds), fixed per occurrence and independent across reminders.
+  New reminders never extend old deadlines. Running timers use suspend-inclusive monotonic time;
+  only wall-clock deadlines cross process restarts.
+- Preserve stable alarm IDs and consumption while either settings or an alarm editor is open.
+- Never remove the user's existing config/, .venv, build SDKs or old installation during a migration.
 
 ## Commands
 
-```powershell
-uv sync                          # install deps (first time)
-uv run floating-clock            # run (entry point = floating_clock.app:main)
-uv run python -m floating_clock  # run via __main__
+Put the pinned Qt and compiler bin directories on PATH, then:
 
-# Package a single-file exe (output in dist/)
-uv run --with pyinstaller pyinstaller --noconsole --onefile `
-  --name floating-clock src/floating_clock/__main__.py
+```text
+python -m pip install -r scripts/requirements-build.txt
+meson setup build --buildtype=release
+meson compile -C build
+python scripts/test.py build
+python scripts/check_format.py
+python -m ruff check scripts tests/tooling
+python -m unittest discover -s tests/tooling -v
 ```
 
-There is a **pytest** suite under `tests/`. Run it headless so no window pops
-up — set the offscreen Qt platform:
+For Windows release builds, first run `python scripts/build_static_qt.py`, put its SDK bin directory
+on PATH, set CMAKE_PREFIX_PATH to that SDK, and configure Meson with `-Dstatic_qt=true`.
+The shared Qt development build remains available. Never overwrite the existing SDK to change linkage.
 
-```powershell
-$env:QT_QPA_PLATFORM = "offscreen"; uv run pytest
-```
-
-CI (`.github/workflows/tests.yml`) runs this on `windows-latest` (Python 3.9
-and 3.12) for every push to `main` and every PR. Windows is used so the
-win32-only tests (`screen.py`, `winsound`) actually run instead of being
-skipped.
-
-For changes hard to cover with a unit test, also do a **headless smoke test** —
-drive the widgets directly with the offscreen platform set:
-
-```bash
-QT_QPA_PLATFORM=offscreen uv run python -c "from PySide6.QtWidgets import QApplication; app=QApplication([]); ..."
-```
-
-`Config.save()` writes `config.ini` into a `config/` folder under the **program
-directory** (`app_dir()`: the exe's folder when frozen, else the project root) —
-independent of the working directory, so autostart reads the same file. Tests
-redirect this via the `temp_config_dir` fixture; the folder is gitignored.
+Use python scripts/check_format.py --fix for C++ formatting; ruff format scripts tests/tooling for
+build scripts. Builds use warnings as errors. Qt Test and Meson's smoke test use offscreen Qt.
+Smoke mode requires --config <isolated-file> and disables real system integration.
+Windows sandboxes must allow named pipes for the single-instance test; never skip it to hide a failure.
 
 ## Architecture
 
-The app is a tray-resident Qt application; there is no main window in the
-taskbar (`setQuitOnLastWindowClosed(False)` — lifecycle is the tray icon).
+- src/core: config migration, alarm matching, reminder deadlines, injectable clocks, countdown/stopwatch
+  state and per-config-directory IPC.
+- src/ui: clock/reminder window, transactional settings and alarm editor, timer/control panel.
+- src/platform: Windows power/registry/sound, Linux DPMS/logind/XDG, macOS AppKit/LaunchAgent support.
+- src/app.cpp: orchestration, transient state, preview cleanup, persistence and restore debounce.
+- tests/cpp: Qt regressions. tests/tooling: artifact publication gate tests.
+- scripts and packaging: pinned SDK setup, deployment, signatures and fail-closed release publication.
 
-- **`app.py` — `FloatingClockApp`** is the orchestrator. It loads `Config`,
-  builds the `ClockWindow`, `AlarmManager`, and the tray menu, then runs a
-  single **500 ms `QTimer`** whose `_tick` calls `clock.update_time()` and
-  `alarm_manager.check()`. All cross-component wiring lives here via callbacks.
-  `_tick` gates `alarm_manager.check()` behind `_alarms_active()` so a dark
-  screen suppresses alarms entirely (no fire, no one-shot consumption) unless
-  `ring_when_screen_off` is set.
-- **`config.py` — `Config`** is a dataclass holding every adjustable setting.
-  `Config.load()` / `Config.save()` are the *only* persistence API; they use
-  `QSettings(IniFormat)` pointed at `config/config.ini` under `app_dir()` (not
-  the registry). Alarms are stored as a JSON string inside the INI.
-- **`clock_window.py` — `ClockWindow`** is the frameless/top-most/translucent
-  `QWidget` (a centered `QLabel`). `apply_config()` is the single place that
-  applies appearance (font/color/opacity/position/click-through). Mouse
-  click-through is a **Win32 extended-window-style** hack (`WS_EX_TRANSPARENT`
-  via `ctypes`). Dragging is gated behind click-through being off; a real drag
-  fires the `on_moved` callback used to auto-exit "move mode".
-- **`alarm.py` — `Alarm` / `AlarmManager`** match alarms by `HH:MM` plus repeat
-  rule (`once` / `daily` / `weekdays` / `custom`) with a per-minute dedup key
-  (the 500 ms tick would otherwise fire repeatedly). One-shot alarms
-  (`repeat_type="once"`) disable themselves on fire.
-- **`autostart.py`** registers/unregisters under the current-user `Run`
-  registry key. The launch command differs between a frozen PyInstaller exe
-  (`sys.frozen`) and script mode (`pythonw.exe -m floating_clock`).
-- **`sound.py`** plays the alarm tone via `winsound` in three modes — `silent`,
-  `system` (an SND_ALIAS from `SYSTEM_SOUNDS`), and `custom` (a WAV via
-  SND_FILENAME, falling back to the default alias if the path is missing).
-- **`screen.py` — `ScreenStateMonitor`** is a `QAbstractNativeEventFilter` that
-  subscribes to `GUID_CONSOLE_DISPLAY_STATE` via
-  `RegisterPowerSettingNotification` and parses `WM_POWERBROADCAST` (all via
-  `ctypes`) to track whether the monitor is on. Defaults to "on" when unknown.
-- **`settings_dialog.py` — `SettingsDialog`** edits a *deepcopy* of `Config`.
-  An `on_preview` callback pushes live appearance changes to the clock as the
-  user edits; `result_config()` is read only when the dialog is accepted.
+## Release
 
-### Cross-cutting conventions
+version.txt is the single version source. Meson generates executable metadata from it.
+Release Please updates versions and CHANGELOG through a PR; merging it builds a draft and publishes
+only after five binaries, metadata, checksums and source all match the release commit.
+CI directly calls the shared build workflow and explicitly dispatches version-PR checks; do not
+rely on GITHUB_TOKEN-generated tags starting workflows. Published releases are immutable.
 
-- **Platform guards:** click-through, `winsound`, autostart/registry, and the
-  power-state monitor are Windows-only and guarded by `sys.platform == "win32"`
-  / `is_supported()`. Non-Windows must still display the clock — degrade
-  silently, never raise (e.g. `screen.py` always reports the display as on).
-- **When config is saved:** settings accepted, click-through toggled, drag
-  released, and one-shot alarm fired. Keep these in sync when adding state.
-- **Comments and docstrings are in English.** User-facing strings (tray menu
-  labels, dialog text, default alarm names) stay in Chinese — only code comments
-  and docstrings are English.
+Pin Actions by full commit SHA and deployment tools by digest. Update locks deliberately, never
+silently accept changed continuous downloads. Signing credentials stay outside artifact staging;
+never print secrets or commands containing them.
 
-## Commits
-
-Use **Conventional Commits** with English messages
-(`feat:`, `fix:`, `feat(config):`, `feat(clock):`, etc.).
+Debian upgrade/uninstall tests are restricted to disposable CI runners. Windows packaging must test
+the single EXE in an otherwise empty directory without SDK paths or runtime resource sidecars.
+Document cross-platform and physical-device validation gaps honestly: offscreen tests cannot verify
+real display power, sound output, screen recording permissions or compositor behavior.

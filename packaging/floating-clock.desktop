@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Floating Clock
+Name[zh_CN]=浮动时钟
+Comment=Floating clock, alarms, countdown and stopwatch
+Comment[zh_CN]=浮动时钟、闹钟、倒计时与秒表
+Exec=floating-clock --control
+Icon=floating-clock
+Terminal=false
+Categories=Utility;Clock;
+StartupNotify=false

@@ -1,0 +1,5 @@
+#include <QtPlugin>
+
+Q_IMPORT_PLUGIN(QWindowsIntegrationPlugin)
+Q_IMPORT_PLUGIN(QOffscreenIntegrationPlugin)
+Q_IMPORT_PLUGIN(QModernWindowsStylePlugin)

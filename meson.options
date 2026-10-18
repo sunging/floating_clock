@@ -1,0 +1,2 @@
+option('tests', type: 'boolean', value: true, description: 'Build isolated Qt tests')
+option('static_qt', type: 'boolean', value: false, description: 'Link the Windows static Qt SDK and runtime')

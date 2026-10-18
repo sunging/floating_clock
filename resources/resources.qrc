@@ -1,0 +1,4 @@
+<RCC>
+  <qresource prefix="/icons"><file alias="clock.png">clock.png</file></qresource>
+  <qresource prefix="/sounds"><file alias="chime.wav">chime.wav</file></qresource>
+</RCC>

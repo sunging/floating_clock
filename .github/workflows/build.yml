@@ -1,0 +1,196 @@
+name: Native build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: ''
+      sign:
+        type: boolean
+        default: false
+    secrets:
+      WINDOWS_CERTIFICATE_BASE64:
+        required: false
+      WINDOWS_CERTIFICATE_PASSWORD:
+        required: false
+      MACOS_CERTIFICATE_BASE64:
+        required: false
+      MACOS_CERTIFICATE_PASSWORD:
+        required: false
+      MACOS_SIGN_IDENTITY:
+        required: false
+      MACOS_NOTARY_KEY_BASE64:
+        required: false
+      MACOS_NOTARY_KEY_ID:
+        required: false
+      MACOS_NOTARY_ISSUER:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+            target: windows-x64
+          - os: ubuntu-24.04
+            platform: linux
+            target: linux-x64
+          - os: macos-15-intel
+            platform: macos
+            target: macos-x64
+          - os: macos-15
+            platform: macos
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: scripts/requirements-build.txt
+      - name: Install build tools
+        run: python -m pip install -r scripts/requirements-build.txt
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libx11-xcb1 libdbus-1-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render0 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-randr0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libxrender1 libxi6 libsm6 libice6 libasound2-dev libpulse-dev libfontconfig1-dev libfuse2t64 patchelf desktop-file-utils dpkg-dev xvfb
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: sdk
+        with:
+          path: |
+            .tools/qt
+            .tools/qt-static
+            .tools/mingw64
+            .tools/deploy
+            .cache/qtbase-*.tar.xz
+          key: sdk-${{ matrix.target }}-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py', 'scripts/build_static_qt.py', 'scripts/requirements-build.txt') }}
+      - name: Install native SDK
+        run: python scripts/run_logged.py .cache/logs/sdk.log python scripts/ci_environment.py
+      - name: Save verified Windows SDK before application checks
+        if: runner.os == 'Windows' && steps.sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .tools/qt
+            .tools/qt-static
+            .tools/mingw64
+            .tools/deploy
+            .cache/qtbase-*.tar.xz
+          key: sdk-${{ matrix.target }}-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py', 'scripts/build_static_qt.py', 'scripts/requirements-build.txt') }}
+      - name: Check C++ formatting
+        run: python scripts/check_format.py
+      - name: Check Python lint
+        run: python -m ruff check scripts tests/tooling
+      - name: Check Python formatting
+        run: python -m ruff format --check scripts tests/tooling
+      - name: Test build and release tooling
+        run: python -m unittest discover -s tests/tooling -v
+      - name: Configure
+        run: python scripts/run_logged.py .cache/logs/configure.log meson setup build --buildtype=release -Dstatic_qt=${{ runner.os == 'Windows' && 'true' || 'false' }}
+      - name: Compile
+        run: python scripts/run_logged.py .cache/logs/compile.log meson compile -C build
+      - name: Test
+        run: python scripts/run_logged.py .cache/logs/test.log python scripts/test.py build
+      - name: Verify Windows desktop color and mouse interaction
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          python scripts/run_logged.py .cache/logs/windows-ui.log build/tests/cpp/windows-ui-tests.exe -o build/tests/cpp/windows-ui-tests.txt,txt -o build/tests/cpp/windows-ui-tests.xml,junitxml
+      - name: Verify Windows high-DPI interaction
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: windows
+          QT_SCALE_FACTOR: '1.5'
+        run: |
+          python scripts/run_logged.py .cache/logs/windows-ui-150.log build/tests/cpp/windows-ui-tests.exe -o build/tests/cpp/windows-ui-150.txt,txt -o build/tests/cpp/windows-ui-150.xml,junitxml
+      - name: Build and verify packages
+        if: runner.os != 'Linux'
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ inputs.sign && secrets.WINDOWS_CERTIFICATE_BASE64 || '' }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ inputs.sign && secrets.WINDOWS_CERTIFICATE_PASSWORD || '' }}
+          MACOS_CERTIFICATE_BASE64: ${{ inputs.sign && secrets.MACOS_CERTIFICATE_BASE64 || '' }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ inputs.sign && secrets.MACOS_CERTIFICATE_PASSWORD || '' }}
+          MACOS_SIGN_IDENTITY: ${{ inputs.sign && secrets.MACOS_SIGN_IDENTITY || '' }}
+          MACOS_NOTARY_KEY_BASE64: ${{ inputs.sign && secrets.MACOS_NOTARY_KEY_BASE64 || '' }}
+          MACOS_NOTARY_KEY_ID: ${{ inputs.sign && secrets.MACOS_NOTARY_KEY_ID || '' }}
+          MACOS_NOTARY_ISSUER: ${{ inputs.sign && secrets.MACOS_NOTARY_ISSUER || '' }}
+        run: python scripts/run_logged.py .cache/logs/package.log python scripts/package.py ${{ matrix.platform }} --qt "${{ env.QT_ROOT_DIR }}"
+      - name: Build and verify Linux packages
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/run_logged.py .cache/logs/package.log python scripts/package.py linux --qt "$QT_ROOT_DIR"
+      - name: Verify Linux install, upgrade and uninstall
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python scripts/run_logged.py .cache/logs/install.log python scripts/verify_install.py linux
+      - name: Upload packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: packages-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload test and build reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: reports-${{ matrix.target }}
+          path: |
+            build/meson-logs/
+            build/tests/cpp/native-tests.*
+            build/tests/cpp/windows-ui*.txt
+            build/tests/cpp/windows-ui*.xml
+            .cache/logs/
+          include-hidden-files: true
+          retention-days: 14
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/requirements-build.txt
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y g++-13 libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libdbus-1-dev libxkbcommon-dev libasound2-dev libpulse-dev libfontconfig1-dev
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools/qt
+          key: sdk-linux-x64-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py') }}
+      - run: python scripts/ci_environment.py
+      - name: Address and undefined behavior sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          python scripts/run_logged.py .cache/logs/configure.log meson setup build --buildtype=debug -Db_sanitize=address,undefined
+          python scripts/run_logged.py .cache/logs/compile.log meson compile -C build
+          python scripts/run_logged.py .cache/logs/test.log python scripts/test.py build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: reports-sanitizers
+          path: |
+            build/meson-logs/
+            build/tests/cpp/native-tests.*
+            .cache/logs/
+          include-hidden-files: true

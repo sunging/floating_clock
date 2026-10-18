@@ -69,6 +69,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y g++-13 libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libdbus-1-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libasound2-dev libpulse-dev libfontconfig1-dev libfuse2t64 patchelf desktop-file-utils dpkg-dev xvfb
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: sdk
         with:
           path: |
             .tools/qt
@@ -79,6 +80,17 @@ jobs:
           key: sdk-${{ matrix.target }}-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py', 'scripts/build_static_qt.py', 'scripts/requirements-build.txt') }}
       - name: Install native SDK
         run: python scripts/run_logged.py .cache/logs/sdk.log python scripts/ci_environment.py
+      - name: Save verified Windows SDK before application checks
+        if: runner.os == 'Windows' && steps.sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .tools/qt
+            .tools/qt-static
+            .tools/mingw64
+            .tools/deploy
+            .cache/qtbase-*.tar.xz
+          key: sdk-${{ matrix.target }}-${{ hashFiles('packaging/toolchain.json', 'scripts/ci_environment.py', 'scripts/install_qt.py', 'scripts/build_static_qt.py', 'scripts/requirements-build.txt') }}
       - name: Check formatting and tooling
         run: |
           python scripts/check_format.py

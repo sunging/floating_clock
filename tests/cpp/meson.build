@@ -1,7 +1,9 @@
 test_moc = qt.compile_moc(sources: 'tests.cpp', dependencies: qt_dep,
   extra_args: host_machine.system() == 'windows' ? ['-DQ_OS_WIN'] : [])
+# qmake's macOS framework discovery omits the define used by QTest's widget helpers and main.
 test_exe = executable('clock-tests', 'tests.cpp', test_moc, resources, plugin_sources,
-  dependencies: clock_dep, build_rpath: qt_runtime_path)
+  dependencies: clock_dep, build_rpath: qt_runtime_path,
+  cpp_args: ['-DQT_WIDGETS_LIB'])
 test('clock', test_exe, env: ['QT_QPA_PLATFORM=offscreen'], timeout: 90,
   args: ['-o', 'native-tests.txt,txt', '-o', 'native-tests.xml,junitxml'],
   workdir: meson.current_build_dir())

@@ -67,7 +67,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-13 libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libdbus-1-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-xinerama0 libasound2-dev libpulse-dev libfontconfig1-dev libfuse2t64 patchelf desktop-file-utils dpkg-dev xvfb
+          sudo apt-get install -y g++-13 libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxext-dev libx11-xcb1 libdbus-1-dev libxkbcommon-dev libxkbcommon-x11-0 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render0 libxcb-render-util0 libxcb-xinerama0 libxcb-shape0 libxcb-randr0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 libxrender1 libxi6 libsm6 libice6 libasound2-dev libpulse-dev libfontconfig1-dev libfuse2t64 patchelf desktop-file-utils dpkg-dev xvfb
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: sdk
         with:

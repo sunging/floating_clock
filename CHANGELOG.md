@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.2.0](https://github.com/sunging/floating_clock/compare/v0.1.0...v0.2.0) (2026-10-19)
 
 ### Features
 

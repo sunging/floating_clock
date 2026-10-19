@@ -80,7 +80,16 @@ def verify_deployment_paths(executable, qt):
 
 
 def smoke(executable, work, platform_name, *launcher_arguments, linkage="shared"):
-    config = work / "smoke" / "config.ini"
+    for language in ["en", "zh_CN"]:
+        smoke_language(
+            executable, work, platform_name, *launcher_arguments, linkage=linkage, language=language
+        )
+
+
+def smoke_language(executable, work, platform_name, *launcher_arguments, linkage, language):
+    config = work / "smoke" / language / "config.ini"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text(f"[General]\nlanguage={language}\n", encoding="utf-8")
     environment = os.environ.copy()
     for key in [
         "QT_PLUGIN_PATH",
@@ -115,7 +124,9 @@ def smoke(executable, work, platform_name, *launcher_arguments, linkage="shared"
         "qt_version": "6.12.0",
         "qt_linkage": linkage,
         "platform": expected_platform,
-        "chinese_qt_translation": True,
+        "language": language,
+        "application_translation_catalog": True,
+        "chinese_qt_translation": language == "zh_CN",
     }
     if platform_name == "windows":
         expected.update(embedded_translation=True, embedded_licenses=True)
@@ -274,7 +285,9 @@ def macos(build, output, qt, work):
         plistlib.dump(
             {
                 "CFBundleName": "Floating Clock",
-                "CFBundleDisplayName": "浮动时钟",
+                "CFBundleDisplayName": "Floating Clock",
+                "CFBundleDevelopmentRegion": "en",
+                "CFBundleLocalizations": ["en", "zh-Hans"],
                 "CFBundleIdentifier": "com.sunging.floating-clock",
                 "CFBundleExecutable": "floating-clock",
                 "CFBundlePackageType": "APPL",
@@ -288,6 +301,12 @@ def macos(build, output, qt, work):
             stream,
         )
     run(qt / "bin/macdeployqt", application, "-always-overwrite")
+    for locale in ["en", "zh-Hans"]:
+        shutil.copytree(
+            ROOT / "packaging/macos" / (locale + ".lproj"),
+            resources / (locale + ".lproj"),
+            dirs_exist_ok=True,
+        )
     verify_deployment_paths(binary, qt)
     licenses(resources, qt)
     translations(resources, qt)

@@ -1,6 +1,7 @@
 """Windows packaging must emit only the verified standalone executable."""
 
 import importlib.util
+import json
 import os
 import sys
 import tempfile
@@ -16,6 +17,44 @@ SPEC.loader.exec_module(package)
 
 
 class WindowsPackageTests(unittest.TestCase):
+    def test_smoke_checks_both_languages_with_isolated_configuration(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "application.exe"
+            executable.touch()
+            launched = []
+
+            def launch(*arguments, **options):
+                config = Path(arguments[arguments.index("--config") + 1])
+                language = config.read_text(encoding="utf-8").split("language=")[1].strip()
+                self.assertTrue(config.is_relative_to(root / "isolated"))
+                self.assertEqual(options["cwd"], executable.parent)
+                self.assertEqual(options["env"]["PATH"], os.path.join(os.environ["WINDIR"], "System32"))
+                for key in ["QT_PLUGIN_PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"]:
+                    self.assertNotIn(key, options["env"])
+                report = {
+                    "version": package.VERSION,
+                    "qt_version": "6.12.0",
+                    "qt_linkage": "static",
+                    "platform": "windows",
+                    "language": language,
+                    "application_translation_catalog": True,
+                    "chinese_qt_translation": language == "zh_CN",
+                    "embedded_translation": True,
+                    "embedded_licenses": True,
+                }
+                config.with_name("state.json").write_text("{}")
+                config.with_name("smoke-result.json").write_text(json.dumps(report))
+                launched.append((language, config))
+
+            with (
+                patch.dict(os.environ, {"WINDIR": str(root / "Windows"), "QT_PLUGIN_PATH": "/isolated-sdk"}),
+                patch.object(package, "run", side_effect=launch),
+            ):
+                package.smoke(executable, root / "isolated", "windows", linkage="static")
+            self.assertEqual([language for language, _ in launched], ["en", "zh_CN"])
+            self.assertNotEqual(launched[0][1], launched[1][1])
+
     def test_only_the_signed_standalone_executable_is_emitted_and_relocated(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

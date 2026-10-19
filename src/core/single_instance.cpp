@@ -1,4 +1,5 @@
 #include "core/single_instance.h"
+#include "core/i18n.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -34,7 +35,7 @@ SingleInstance::SingleInstance(const QString &configPath, QObject *parent) : QOb
 SingleInstance::Result SingleInstance::start(QString *error) {
     if (!QDir().mkpath(directory_)) {
         if (error)
-            *error = QStringLiteral("无法创建配置目录：%1").arg(directory_);
+            *error = I18n::tr("Could not create the settings directory: %1").arg(directory_);
         return Result::Error;
     }
     lock_ = std::make_unique<QLockFile>(directory_ + "/instance.lock");
@@ -45,14 +46,16 @@ SingleInstance::Result SingleInstance::start(QString *error) {
         if (socket.waitForConnected(1500))
             return Result::ActivatedExisting;
         if (error)
-            *error = QStringLiteral("已有实例正在启动或无响应，请稍后重试。未修改其配置。");
+            *error = I18n::tr("Another instance is starting or not responding. Try again later. "
+                              "Its settings were not modified.");
         return Result::Error;
     }
     // Only the lock owner may remove an abandoned endpoint.
     QLocalServer::removeServer(name_);
     if (!server_.listen(name_)) {
         if (error)
-            *error = QStringLiteral("无法建立单实例通信：%1").arg(server_.errorString());
+            *error = I18n::tr("Could not establish single-instance communication: %1")
+                         .arg(server_.errorString());
         return Result::Error;
     }
     return Result::Primary;

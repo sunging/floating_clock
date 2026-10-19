@@ -1,9 +1,9 @@
 sources = files(
   'core/model.cpp', 'core/config_store.cpp', 'core/time_source.cpp',
-  'core/timers.cpp', 'core/single_instance.cpp', 'platform/services.cpp',
-  'ui/clock_window.cpp', 'ui/dialogs.cpp', 'app.cpp',
+  'core/timers.cpp', 'core/single_instance.cpp', 'core/i18n.cpp', 'platform/services.cpp',
+  'ui/clock_window.cpp', 'ui/dialogs.cpp', 'ui/translation.cpp', 'app.cpp',
 )
-headers = files('core/single_instance.h', 'platform/services.h',
+headers = files('core/single_instance.h', 'core/i18n.h', 'platform/services.h',
                 'ui/clock_window.h', 'ui/dialogs.h', 'app.h')
 platform_deps = []
 if host_machine.system() == 'windows'
@@ -24,6 +24,7 @@ clock_lib = static_library('clock-core', sources, generated,
 clock_dep = declare_dependency(link_with: clock_lib, include_directories: inc,
   dependencies: [qt_dep] + platform_deps)
 resources = qt.compile_resources(sources: '../resources/resources.qrc')
+resources += application_translations
 if host_machine.system() == 'windows'
   python = import('python').find_installation()
   windows_qt = get_option('static_qt') ? qt_base : qt_dep

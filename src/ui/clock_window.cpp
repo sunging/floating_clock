@@ -1,5 +1,7 @@
 #include "ui/clock_window.h"
+#include "core/i18n.h"
 #include "platform/services.h"
+#include "ui/translation.h"
 
 #include <QApplication>
 #include <QColor>
@@ -76,7 +78,7 @@ QPoint clampedPosition(const QRect &window, const QRect &area) {
 
 ClockWindow::ClockWindow(QWidget *parent, BackgroundSampler sampler)
     : QWidget(parent), sampler_(sampler ? std::move(sampler) : captureScreenRegion) {
-    setWindowTitle(QStringLiteral("浮动时钟"));
+    bindText(this, QT_TRANSLATE_NOOP("FloatingClock", "Floating Clock"), "windowTitle");
     setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
     auto *layout = new QVBoxLayout(this);
@@ -103,7 +105,8 @@ ClockWindow::ClockWindow(QWidget *parent, BackgroundSampler sampler)
     text_->setMinimumSize(0, 0);
     text_->viewport()->installEventFilter(this);
     popup->addWidget(text_, 1);
-    stop_ = new QPushButton(QStringLiteral("停止提醒"), panel_);
+    stop_ =
+        translatedWidget<QPushButton>(QT_TRANSLATE_NOOP("FloatingClock", "Stop reminders"), panel_);
     stop_->setObjectName("stopReminder");
     connect(stop_, &QPushButton::clicked, this, &ClockWindow::dismissed);
     popup->addWidget(stop_);
@@ -115,6 +118,7 @@ ClockWindow::ClockWindow(QWidget *parent, BackgroundSampler sampler)
         render();
     });
     applyConfig(Config());
+    connect(&LanguageManager::instance(), &LanguageManager::changed, this, [this] { render(); });
 }
 
 void ClockWindow::applyConfig(const Config &config) {

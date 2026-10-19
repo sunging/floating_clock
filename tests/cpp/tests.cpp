@@ -1,6 +1,8 @@
 #include "app.h"
+#include "core/i18n.h"
 #include "core/single_instance.h"
 #include <QApplication>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QImage>
@@ -121,6 +123,292 @@ private:
 class ClockTests : public QObject {
     Q_OBJECT
 private slots:
+    void init() {
+        QVERIFY(fc::LanguageManager::instance().apply("en"));
+    }
+    void cleanup() {
+        QVERIFY(fc::LanguageManager::instance().apply("en"));
+    }
+    void languageResolution_data() {
+        QTest::addColumn<QString>("locale");
+        QTest::addColumn<QString>("expected");
+        QTest::newRow("English") << QString("en_US") << QString("en");
+        QTest::newRow("Simplified Chinese") << QString("zh_CN") << QString("zh_CN");
+        QTest::newRow("Traditional Chinese fallback") << QString("zh_TW") << QString("zh_CN");
+        QTest::newRow("Unsupported language fallback") << QString("fr_FR") << QString("en");
+    }
+    void languageResolution() {
+        QFETCH(QString, locale);
+        QFETCH(QString, expected);
+        QCOMPARE(fc::LanguageManager::resolve("system", QLocale(locale)), expected);
+        QCOMPARE(fc::LanguageManager::resolve("invalid", QLocale(locale)), expected);
+        QCOMPARE(fc::LanguageManager::resolve("en", QLocale(locale)), QString("en"));
+        QCOMPARE(fc::LanguageManager::resolve("zh_CN", QLocale(locale)), QString("zh_CN"));
+    }
+    void preferredUiLanguagesTakePriority() {
+        QCOMPARE(fc::LanguageManager::resolve("system", QStringList{"en-US", "zh-CN"}),
+                 QString("en"));
+        QCOMPARE(fc::LanguageManager::resolve("system", QStringList{"fr-FR", "zh-Hant-TW"}),
+                 QString("zh_CN"));
+        QCOMPARE(fc::LanguageManager::resolve("system", QStringList{"fr-FR"}), QString("en"));
+        QCOMPARE(fc::LanguageManager::resolve("zh_CN", QStringList{"en-US"}), QString("zh_CN"));
+    }
+    void languageCatalogAndStandardButtons() {
+        auto &language = fc::LanguageManager::instance();
+        QVERIFY(language.applicationCatalogAvailable());
+        fc::ClockWindow window;
+        QDialogButtonBox buttons(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+        auto *stop = window.findChild<QPushButton *>("stopReminder");
+        QVERIFY(stop);
+        QCOMPARE(stop->text(), QString("Stop reminders"));
+        QCOMPARE(fc::I18n::tr("%n reminders", nullptr, 2), QString("2 reminders"));
+        QVERIFY(language.apply("zh_CN"));
+        QCOMPARE(window.windowTitle(), QStringLiteral("浮动时钟"));
+        QCOMPARE(stop->text(), QStringLiteral("停止提醒"));
+        QCOMPARE(fc::I18n::tr("%n reminders", nullptr, 2), QStringLiteral("2 个提醒"));
+        QTRY_VERIFY(
+            buttons.button(QDialogButtonBox::Cancel)->text().contains(QStringLiteral("取消")));
+        QVERIFY(language.qtTranslationLoaded());
+        QCOMPARE(QLocale().language(), QLocale::Chinese);
+        QVERIFY(language.apply("en"));
+        QCOMPARE(window.windowTitle(), QString("Floating Clock"));
+        QCOMPARE(stop->text(), QString("Stop reminders"));
+        QTRY_COMPARE(buttons.button(QDialogButtonBox::Cancel)->text(), QString("Cancel"));
+        QVERIFY(!language.qtTranslationLoaded());
+        QCOMPARE(QLocale().language(), QLocale::English);
+    }
+    void languageSwitchPreservesDraftsAndSelections() {
+        fc::Config config;
+        config.language = "en";
+        fc::Alarm alarm;
+        alarm.label = QStringLiteral("用户名称 / Keep me");
+        alarm.content = QStringLiteral("用户内容 / Keep this too");
+        config.alarms = {alarm};
+        fc::SettingsDialog settings(config, fc::Capabilities());
+        auto *languages = settings.findChild<QComboBox *>("language");
+        auto *font = settings.findChild<QSpinBox *>("fontSize");
+        auto *list = settings.findChild<QListWidget *>("alarmList");
+        QVERIFY(languages && font && list);
+        font->setValue(77);
+        list->setCurrentRow(0);
+        fc::AlarmEditDialog editor(alarm, &settings);
+        auto *name = editor.findChild<QLineEdit *>("alarmLabel");
+        name->setText(QStringLiteral("编辑中 / Unsaved"));
+        auto *repeat = editor.findChild<QComboBox *>("alarmRepeat");
+        repeat->setCurrentIndex(repeat->findData("weekdays"));
+        connect(
+            &settings, &fc::SettingsDialog::previewRequested, &settings,
+            [](const fc::Config &draft) { fc::LanguageManager::instance().apply(draft.language); });
+        QSignalSpy previews(&settings, &fc::SettingsDialog::previewRequested);
+        languages->setCurrentIndex(languages->findData("zh_CN"));
+        QCOMPARE(previews.count(), 1);
+        QCOMPARE(settings.windowTitle(), QStringLiteral("浮动时钟 — 设置"));
+        QCOMPARE(editor.windowTitle(), QStringLiteral("编辑闹钟"));
+        QCOMPARE(name->text(), QStringLiteral("编辑中 / Unsaved"));
+        QCOMPARE(repeat->currentData().toString(), QString("weekdays"));
+        QCOMPARE(settings.resultConfig().fontSize, 77);
+        QCOMPARE(settings.resultConfig().language, QString("zh_CN"));
+        QCOMPARE(settings.resultConfig().alarms.front().toJson(), alarm.toJson());
+        QCOMPARE(list->currentRow(), 0);
+        QVERIFY(list->item(0)->text().contains(alarm.label));
+        QVERIFY(fc::LanguageManager::instance().apply("en"));
+        QCOMPARE(previews.count(), 1);
+        QCOMPARE(editor.windowTitle(), QString("Edit alarm"));
+        QCOMPARE(name->text(), QStringLiteral("编辑中 / Unsaved"));
+        QCOMPARE(languages->currentData().toString(), QString("zh_CN"));
+    }
+    void bilingualLayouts_data() {
+        QTest::addColumn<QString>("language");
+        QTest::newRow("English") << QString("en");
+        QTest::newRow("Chinese") << QString("zh_CN");
+    }
+    void bilingualLayouts() {
+        QFETCH(QString, language);
+        QVERIFY(fc::LanguageManager::instance().apply(language));
+        FakeTime time;
+        fc::Timers timers(time);
+        timers.startCountdown(123000);
+        timers.startStopwatch();
+        time.advance(1234);
+        timers.lap();
+        fc::Config config;
+        config.language = language;
+        config.popupFlash = false;
+        fc::ControlPanel panel(timers, false);
+        fc::SettingsDialog settings(config, fc::Capabilities());
+        fc::AlarmEditDialog editor(fc::Alarm{});
+        fc::AboutDialog about;
+        fc::ClockWindow clock(nullptr, [](const QRect &) { return QImage(); });
+        clock.applyConfig(config);
+        clock.setReminder(fc::I18n::tr("Countdown finished"), "A reminder with user text.");
+        const QList<QPair<QString, QWidget *>> widgets{{"control", &panel},
+                                                       {"settings", &settings},
+                                                       {"alarm", &editor},
+                                                       {"about", &about},
+                                                       {"reminder", &clock}};
+        for (const auto &entry : widgets) {
+            entry.second->setAttribute(Qt::WA_DontShowOnScreen);
+            entry.second->show();
+        }
+        QCoreApplication::processEvents();
+        auto *stop = clock.findChild<QPushButton *>("stopReminder");
+        QVERIFY(stop && stop->isVisible());
+        QVERIFY(clock.rect().contains(stop->mapTo(&clock, stop->rect().center())));
+        QVERIFY(stop->width() >= stop->minimumSizeHint().width());
+        auto *selector = settings.findChild<QComboBox *>("language");
+        QVERIFY(settings.rect().contains(selector->mapTo(&settings, selector->rect().center())));
+        const auto snapshots = qEnvironmentVariable("FC_UI_SNAPSHOT_DIR");
+        if (!snapshots.isEmpty()) {
+            QVERIFY(QDir().mkpath(snapshots));
+            for (const auto &entry : widgets)
+                QVERIFY(entry.second->grab().save(
+                    QDir(snapshots).filePath(entry.first + '-' + language + ".png")));
+        }
+    }
+    void settingsLanguagePreviewCancelAndSave() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        fc::ConfigStore store(directory.filePath("config.ini"));
+        fc::Config config;
+        config.language = "en";
+        fc::Alarm alarm;
+        FakeTime time;
+        alarm.time = time.wall.time().toString("HH:mm");
+        alarm.label = "Keep this alarm";
+        config.alarms = {alarm};
+        QVERIFY(store.save(config));
+        FakePlatform platform;
+        FakeSound sound;
+        fc::ApplicationController controller(store, time, platform, sound, false);
+        QVERIFY(controller.reminders().active());
+        const auto deadline = controller.reminders().items().front().expiresAt;
+        const auto plays = sound.plays;
+        controller.timers().startCountdown(60000);
+        controller.timers().startStopwatch();
+        time.advance(1234);
+        controller.timers().lap();
+        const auto snapshot = controller.timers().snapshot();
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<fc::SettingsDialog *>(qApp->activeModalWidget());
+            QVERIFY(dialog);
+            auto *languages = dialog->findChild<QComboBox *>("language");
+            languages->setCurrentIndex(languages->findData("zh_CN"));
+            QCOMPARE(fc::LanguageManager::instance().language(), QString("zh_CN"));
+            QCOMPARE(store.load().language, QString("en"));
+            QCOMPARE(controller.reminders().items().front().expiresAt, deadline);
+            QCOMPARE(sound.plays, plays);
+            dialog->reject();
+        });
+        controller.openSettings();
+        QCOMPARE(fc::LanguageManager::instance().language(), QString("en"));
+        QCOMPARE(controller.config().language, QString("en"));
+        QCOMPARE(controller.timers().snapshot(), snapshot);
+        QCOMPARE(controller.reminders().items().front().expiresAt, deadline);
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<fc::SettingsDialog *>(qApp->activeModalWidget());
+            QVERIFY(dialog);
+            auto *languages = dialog->findChild<QComboBox *>("language");
+            languages->setCurrentIndex(languages->findData("zh_CN"));
+            dialog->accept();
+        });
+        controller.openSettings();
+        QCOMPARE(store.load().language, QString("zh_CN"));
+        QCOMPARE(controller.config().language, QString("zh_CN"));
+        QCOMPARE(controller.timers().snapshot(), snapshot);
+        QCOMPARE(controller.reminders().items().front().expiresAt, deadline);
+        QCOMPARE(sound.plays, plays);
+        QCOMPARE(platform.startupWrites, 0);
+    }
+    void settingsLanguageSaveFailureRestoresPreviousState() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        fc::ConfigStore store(directory.filePath("config.ini"));
+        fc::Config config;
+        config.language = "en";
+        QVERIFY(store.save(config));
+        FakeTime time;
+        FakePlatform platform;
+        FakeSound sound;
+        fc::ApplicationController controller(store, time, platform, sound, false);
+        controller.timers().startCountdown(60000);
+        controller.timers().startStopwatch();
+        time.advance(1234);
+        controller.timers().lap();
+        const auto snapshot = controller.timers().snapshot();
+        {
+            QSettings newer(store.path(), QSettings::IniFormat);
+            newer.setValue("schema_version", 999);
+            newer.sync();
+            QCOMPARE(newer.status(), QSettings::NoError);
+        }
+        QFile file(store.path());
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const auto original = file.readAll();
+        file.close();
+        QTimer::singleShot(0, [&] {
+            auto *dialog = qobject_cast<fc::SettingsDialog *>(qApp->activeModalWidget());
+            QVERIFY(dialog);
+            auto *languages = dialog->findChild<QComboBox *>("language");
+            auto *font = dialog->findChild<QSpinBox *>("fontSize");
+            QVERIFY(languages && font);
+            languages->setCurrentIndex(languages->findData("zh_CN"));
+            font->setValue(77);
+            QCOMPARE(fc::LanguageManager::instance().language(), QString("zh_CN"));
+            dialog->accept();
+        });
+        controller.openSettings();
+        QCOMPARE(fc::LanguageManager::instance().language(), QString("en"));
+        QCOMPARE(controller.config().language, QString("en"));
+        QCOMPARE(controller.config().fontSize, config.fontSize);
+        QCOMPARE(controller.timers().snapshot(), snapshot);
+        QCOMPARE(platform.startupWrites, 0);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), original);
+    }
+    void generatedReminderLanguagePreservesUserTextAndDeadlines() {
+        fc::ReminderController reminders;
+        fc::Config config;
+        config.soundMode = "silent";
+        reminders.addCountdown(config, 1000);
+        const auto deadline = reminders.items().front().expiresAt;
+        QCOMPARE(reminders.title(), QString("Countdown finished"));
+        QVERIFY(fc::LanguageManager::instance().apply("zh_CN"));
+        QCOMPARE(reminders.title(), QStringLiteral("倒计时结束"));
+        QCOMPARE(reminders.items().front().expiresAt, deadline);
+        fc::Alarm user;
+        user.label = QStringLiteral("用户标题 / User title");
+        user.content = QStringLiteral("用户内容 / User content");
+        reminders.add(user, config, 2000);
+        QVERIFY(reminders.content().contains(user.label));
+        QVERIFY(reminders.content().contains(user.content));
+        QCOMPARE(reminders.title(), QStringLiteral("2 个提醒"));
+        QVERIFY(fc::LanguageManager::instance().apply("en"));
+        QVERIFY(reminders.content().contains("Countdown finished"));
+        QVERIFY(reminders.content().contains(user.label));
+        QCOMPARE(reminders.items().front().expiresAt, deadline);
+        QVERIFY(!reminders.expire(deadline - 1));
+        QVERIFY(reminders.expire(deadline));
+        QCOMPARE(reminders.title(), user.label);
+    }
+    void invalidLanguageFallsBackWithoutChangingLegacyAlarms() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        fc::ConfigStore store(directory.filePath("config.ini"));
+        QSettings settings(store.path(), QSettings::IniFormat);
+        settings.setValue("language", "unsupported");
+        settings.setValue(
+            "alarms", R"([{"id":"legacy-id","time":"08:00","label":"Keep","repeat_daily":false}])");
+        settings.sync();
+        auto config = store.load();
+        QCOMPARE(config.language, QString("system"));
+        QCOMPARE(config.alarms.front().id, QString("legacy-id"));
+        QVERIFY(config.alarms.front().once());
+        const auto alarm = config.alarms.front().toJson();
+        config.language = "zh_CN";
+        QVERIFY(store.save(config));
+        QCOMPARE(store.load().language, QString("zh_CN"));
+        QCOMPARE(store.load().alarms.front().toJson(), alarm);
+    }
     void qtLinkageAndStaticPlugins() {
 #ifdef FC_STATIC_QT
         QVERIFY(!QLibraryInfo::isSharedBuild());
@@ -378,6 +666,7 @@ private slots:
         fc::ConfigStore store(directory.filePath("config.ini"));
         fc::Config config;
         config.fontSize = 91;
+        config.language = "zh_CN";
         config.opacity = .33;
         config.color = "#112233";
         config.autoColor = true;
@@ -408,6 +697,7 @@ private slots:
         QVERIFY2(store.save(config, &error), qUtf8Printable(error));
         const auto loaded = store.load(&error);
         QVERIFY(error.isEmpty());
+        QCOMPARE(loaded.language, config.language);
         QCOMPARE(loaded.fontSize, config.fontSize);
         QCOMPARE(loaded.opacity, config.opacity);
         QCOMPARE(loaded.color, config.color);
@@ -435,7 +725,7 @@ private slots:
         QSettings settings(store.path(), QSettings::IniFormat);
         for (const auto &key : fc::ConfigStore::scalarKeys())
             QVERIFY2(settings.contains(key), qUtf8Printable(key));
-        QCOMPARE(fc::ConfigStore::scalarKeys().size(), 23);
+        QCOMPARE(fc::ConfigStore::scalarKeys().size(), 24);
         QVERIFY(store.save(fc::Config()));
         QVERIFY(!store.load().posX);
     }
@@ -456,6 +746,7 @@ private slots:
         fc::ConfigStore store(path);
         QString warning;
         auto cfg = store.load(&warning);
+        QCOMPARE(cfg.language, QString("system"));
         QVERIFY(!warning.isEmpty());
         QCOMPARE(cfg.fontSize, 48);
         QCOMPARE(cfg.opacity, .75);
@@ -542,7 +833,7 @@ private slots:
         file.close();
         QString warning;
         QVERIFY(store.loadRuntime(&warning).isEmpty());
-        QVERIFY(warning.contains(QStringLiteral("保存已禁用")));
+        QVERIFY(warning.contains("Saving is disabled"));
         FakeTime time;
         QString error;
         QVERIFY(!store.saveRuntime(fc::Timers(time).snapshot(), &error));

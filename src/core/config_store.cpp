@@ -1,4 +1,5 @@
 #include "core/config_store.h"
+#include "core/i18n.h"
 
 #include <QColor>
 #include <QCoreApplication>
@@ -51,6 +52,7 @@ std::optional<int> position(const QVariant &raw) {
 #define COLOR(key, member) FIELD(key, member, color(raw, Config().member))
 const QVector<Field> &fields() {
     static const QVector<Field> result{
+        FIELD("language", language, choice(raw, "system", {"system", "en", "zh_CN"})),
         FIELD("font_size", fontSize, readInt(raw, 48, 8, 400)),
         FIELD("opacity", opacity, readReal(raw, 0.75, 0.1, 1.0)),
         COLOR("color", color),
@@ -100,7 +102,8 @@ void warn(QString *warning, const QString &message) {
 
 bool ensureParent(const QString &path, QString *error) {
     return QDir().mkpath(QFileInfo(path).absolutePath()) ||
-           fail(error, QStringLiteral("无法创建配置目录：%1").arg(QFileInfo(path).absolutePath()));
+           fail(error, I18n::tr("Could not create the settings directory: %1")
+                           .arg(QFileInfo(path).absolutePath()));
 }
 } // namespace
 
@@ -111,7 +114,7 @@ Config ConfigStore::load(QString *warning) const {
         warning->clear();
     Config result;
     if (QFileInfo(path_).size() > MaxConfigBytes) {
-        warn(warning, QStringLiteral("配置文件过大，已使用默认设置。"));
+        warn(warning, I18n::tr("The settings file is too large. Using default settings."));
         return result;
     }
     QSettings settings(path_, QSettings::IniFormat);
@@ -121,7 +124,8 @@ Config ConfigStore::load(QString *warning) const {
     const auto doc =
         QJsonDocument::fromJson(settings.value("alarms", "[]").toString().toUtf8(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !doc.isArray())
-        warn(warning, QStringLiteral("闹钟列表损坏，已跳过；再次保存前会备份原文件。"));
+        warn(warning, I18n::tr("The alarm list is damaged and was skipped. The original file will "
+                               "be backed up before saving."));
     else {
         QSet<QString> ids;
         bool skipped = false;
@@ -137,12 +141,15 @@ Config ConfigStore::load(QString *warning) const {
             result.alarms.append(*alarm);
         }
         if (skipped)
-            warn(warning, QStringLiteral("已跳过无效的闹钟条目，其余闹钟正常载入。"));
+            warn(warning,
+                 I18n::tr("Invalid alarm entries were skipped. The remaining alarms were loaded."));
     }
     if (settings.status() != QSettings::NoError)
-        warn(warning, QStringLiteral("读取配置失败或格式损坏：%1").arg(path_));
+        warn(warning,
+             I18n::tr("Could not read the settings or the format is invalid: %1").arg(path_));
     if (settings.value("schema_version", 0).toInt() > Schema)
-        warn(warning, QStringLiteral("此配置由更新版本创建，保存已禁用，请升级应用。"));
+        warn(warning, I18n::tr("These settings were created by a newer version. Saving is "
+                               "disabled; update the application."));
     return result;
 }
 
@@ -153,7 +160,8 @@ bool ConfigStore::backup(QString *error) const {
                                 QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz") +
                                 '.' + QUuid::createUuid().toString(QUuid::Id128).left(8) + ".bak";
     return QFile::copy(path_, destination) ||
-           fail(error, QStringLiteral("无法备份原配置，已取消写入：%1").arg(path_));
+           fail(error, I18n::tr("Could not back up the previous settings. Saving was canceled: %1")
+                           .arg(path_));
 }
 
 bool ConfigStore::save(const Config &config, QString *error) const {
@@ -163,7 +171,9 @@ bool ConfigStore::save(const Config &config, QString *error) const {
     settings.setAtomicSyncRequired(true);
     const int schema = settings.value("schema_version", 0).toInt();
     if (schema > Schema)
-        return fail(error, QStringLiteral("配置版本较新，不能覆盖，请升级应用。"));
+        return fail(
+            error,
+            I18n::tr("Cannot overwrite settings from a newer version. Update the application."));
     QString existingWarning;
     load(&existingWarning);
     if ((schema < Schema || !existingWarning.isEmpty()) && !backup(error))
@@ -181,16 +191,18 @@ bool ConfigStore::save(const Config &config, QString *error) const {
     settings.setValue("schema_version", Schema);
     settings.sync();
     return settings.status() == QSettings::NoError ||
-           fail(error, QStringLiteral("保存失败，请检查目录权限和剩余空间：%1").arg(path_));
+           fail(error,
+                I18n::tr("Could not save. Check directory permissions and free disk space: %1")
+                    .arg(path_));
 }
 
 bool ConfigStore::importFile(const QString &source, Config *result, QString *error) const {
     if (!QFileInfo::exists(source) || !QFileInfo(source).isReadable())
-        return fail(error, QStringLiteral("无法读取导入文件。"));
+        return fail(error, I18n::tr("Could not read the settings file to import."));
     QString warning;
     const Config imported = ConfigStore(source).load(&warning);
     if (!warning.isEmpty())
-        return fail(error, QStringLiteral("导入未完成：%1").arg(warning));
+        return fail(error, I18n::tr("Import did not complete: %1").arg(warning));
     if (!backup(error) || !save(imported, error))
         return false;
     if (result)
@@ -203,16 +215,17 @@ QJsonObject ConfigStore::loadRuntime(QString *warning) const {
     if (!file.exists())
         return {};
     if (!file.open(QIODevice::ReadOnly) || file.size() > MaxConfigBytes) {
-        warn(warning, QStringLiteral("无法读取计时状态。"));
+        warn(warning, I18n::tr("Could not read timer state."));
         return {};
     }
     const auto doc = QJsonDocument::fromJson(file.readAll());
     if (doc.isObject() && doc.object().value("schema_version").toInt() > 1) {
-        warn(warning, QStringLiteral("计时状态由更新版本创建，保存已禁用，请升级应用。"));
+        warn(warning, I18n::tr("Timer state was created by a newer version. Saving is disabled; "
+                               "update the application."));
         return {};
     }
     if (!doc.isObject() || doc.object().value("schema_version").toInt() != 1) {
-        warn(warning, QStringLiteral("计时状态损坏或版本不兼容，已重置计时。"));
+        warn(warning, I18n::tr("Timer state is damaged or incompatible. Timers were reset."));
         return {};
     }
     return doc.object();
@@ -224,16 +237,21 @@ bool ConfigStore::saveRuntime(const QJsonObject &state, QString *error) const {
     QFile previous(runtimePath());
     if (previous.exists()) {
         if (!previous.open(QIODevice::ReadOnly) || previous.size() > MaxConfigBytes)
-            return fail(error, QStringLiteral("无法检查原计时状态，已取消覆盖。"));
+            return fail(
+                error,
+                I18n::tr("Could not inspect the previous timer state. Overwriting was canceled."));
         const auto doc = QJsonDocument::fromJson(previous.readAll());
         if (doc.isObject() && doc.object().value("schema_version").toInt() > 1)
-            return fail(error, QStringLiteral("计时状态版本较新，不能覆盖，请升级应用。"));
+            return fail(
+                error,
+                I18n::tr(
+                    "Cannot overwrite timer state from a newer version. Update the application."));
         previous.close();
     }
     QSaveFile file(runtimePath());
     const auto bytes = QJsonDocument(state).toJson();
     if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        return fail(error, QStringLiteral("无法保存计时状态：%1").arg(file.errorString()));
+        return fail(error, I18n::tr("Could not save timer state: %1").arg(file.errorString()));
     return true;
 }
 

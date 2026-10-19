@@ -1,4 +1,5 @@
 #include "platform/services.h"
+#include "core/i18n.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -104,9 +105,10 @@ PlatformServices::PlatformServices(QObject *parent) : QObject(parent) {
     if (backend.startsWith("wayland")) {
         capabilities_.positioning = false;
         capabilities_.screenSampling = false;
-        capabilities_.explanation = QStringLiteral(
-            "Wayland 由桌面管理窗口位置和置顶；不支持可靠的位置恢复、持续背景取色和关屏检测。"
-            "关屏状态未知时按屏幕开启处理。");
+        capabilities_.explanation = QString::fromUtf8(QT_TRANSLATE_NOOP(
+            "FloatingClock", "Wayland controls window positioning and stacking. Reliable position "
+                             "restoration, continuous background sampling and display-power "
+                             "detection are unavailable. Unknown display power is treated as on."));
     }
     if (backend == "offscreen" || backend == "minimal") {
         capabilities_.clickThrough = false;
@@ -204,15 +206,17 @@ bool PlatformServices::setAutostart(bool enabled, const QString &configPath, QSt
         if (!QFileInfo::exists(path) || QFile::remove(path))
             return true;
         if (error)
-            *error = QStringLiteral("无法移除自启动文件，请检查用户目录权限。");
+            *error =
+                I18n::tr("Could not remove the autostart file. Check user-directory permissions.");
         return false;
     }
     QString executable = qEnvironmentVariable("APPIMAGE");
     if (executable.isEmpty())
         executable = QCoreApplication::applicationFilePath();
     const QByteArray content =
-        QStringLiteral("[Desktop Entry]\nType=Application\nName=浮动时钟\nExec=%1 --config %2\n"
-                       "Terminal=false\nX-GNOME-Autostart-enabled=true\n")
+        QStringLiteral(
+            "[Desktop Entry]\nType=Application\nName=Floating Clock\nName[zh_CN]=浮动时钟\nExec=%1 "
+            "--config %2\nTerminal=false\nX-GNOME-Autostart-enabled=true\n")
             .arg(desktopQuote(executable), desktopQuote(configPath))
             .toUtf8();
     QSaveFile file(path);
@@ -224,7 +228,8 @@ bool PlatformServices::setAutostart(bool enabled, const QString &configPath, QSt
     Q_UNUSED(configPath)
 #endif
     if (error)
-        *error = QStringLiteral("无法修改自启动设置，请检查用户目录或系统权限。");
+        *error = I18n::tr(
+            "Could not change autostart settings. Check user-directory or system permissions.");
     return false;
 }
 
@@ -310,10 +315,11 @@ void SoundService::ensureEffect() {
                 fallback_ = true;
                 effect_->setSource(QUrl("qrc:/sounds/chime.wav"));
                 effect_->play();
-                emit failed(QStringLiteral("自定义提示音无法播放，已改用内置提示音。"));
+                emit failed(I18n::tr("Could not play the custom sound. Using the built-in sound."));
             } else {
                 wanted_ = false;
-                emit failed(QStringLiteral("音频设备不可用；屏幕提醒仍然有效。"));
+                emit failed(
+                    I18n::tr("The audio device is unavailable. Visual reminders remain active."));
             }
         }
     });
@@ -336,17 +342,18 @@ void SoundService::play(const Config &config) {
     if (config.soundMode == "custom") {
         if (QFileInfo::exists(config.soundPath) && player_->playFile(config.soundPath))
             return;
-        emit failed(QStringLiteral("自定义提示音不存在或无法播放，已改用内置提示音。"));
+        emit failed(I18n::tr(
+            "The custom sound is missing or could not be played. Using the built-in sound."));
     }
     QFile wave(":/sounds/chime.wav");
     if (!wave.open(QIODevice::ReadOnly) || !player_->playMemory(wave.readAll()))
-        emit failed(QStringLiteral("音频设备不可用；屏幕提醒仍然有效。"));
+        emit failed(I18n::tr("The audio device is unavailable. Visual reminders remain active."));
 #else
     ensureEffect();
     wanted_ = true;
     fallback_ = config.soundMode != "custom" || !QFileInfo::exists(config.soundPath);
     if (config.soundMode == "custom" && fallback_)
-        emit failed(QStringLiteral("自定义提示音不存在，已改用内置提示音。"));
+        emit failed(I18n::tr("The custom sound is missing. Using the built-in sound."));
     effect_->setSource(fallback_ ? QUrl("qrc:/sounds/chime.wav")
                                  : QUrl::fromLocalFile(config.soundPath));
     effect_->play();

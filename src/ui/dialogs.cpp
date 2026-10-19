@@ -1,4 +1,6 @@
 #include "ui/dialogs.h"
+#include "core/i18n.h"
+#include "ui/translation.h"
 #include "version.h"
 
 #include <QCloseEvent>
@@ -23,22 +25,24 @@
 
 namespace fc {
 namespace {
-const QStringList DayNames{QStringLiteral("周一"), QStringLiteral("周二"), QStringLiteral("周三"),
-                           QStringLiteral("周四"), QStringLiteral("周五"), QStringLiteral("周六"),
-                           QStringLiteral("周日")};
+const char *const DayNames[]{
+    QT_TRANSLATE_NOOP("FloatingClock", "Mon"), QT_TRANSLATE_NOOP("FloatingClock", "Tue"),
+    QT_TRANSLATE_NOOP("FloatingClock", "Wed"), QT_TRANSLATE_NOOP("FloatingClock", "Thu"),
+    QT_TRANSLATE_NOOP("FloatingClock", "Fri"), QT_TRANSLATE_NOOP("FloatingClock", "Sat"),
+    QT_TRANSLATE_NOOP("FloatingClock", "Sun")};
 
 QString repeatName(const Alarm &alarm) {
     if (alarm.repeat == "once")
-        return QStringLiteral("单次");
+        return I18n::tr("Once");
     if (alarm.repeat == "weekdays")
-        return QStringLiteral("工作日");
+        return I18n::tr("Weekdays");
     if (alarm.repeat == "custom") {
         QStringList days;
         for (int day : alarm.weekdays)
-            days.append(DayNames.at(day));
+            days.append(I18n::tr(DayNames[day]));
         return days.join(' ');
     }
-    return QStringLiteral("每天");
+    return I18n::tr("Daily");
 }
 
 QWidget *scrollPage(QFormLayout **form) {
@@ -52,7 +56,7 @@ QWidget *scrollPage(QFormLayout **form) {
     return scroll;
 }
 
-QSpinBox *integer(QFormLayout *form, const QString &label, int &value, int low, int high,
+QSpinBox *integer(QFormLayout *form, const char *label, int &value, int low, int high,
                   const std::function<void()> &changed = {}) {
     auto *spin = new QSpinBox;
     spin->setRange(low, high);
@@ -62,11 +66,11 @@ QSpinBox *integer(QFormLayout *form, const QString &label, int &value, int low, 
         if (changed)
             changed();
     });
-    form->addRow(label, spin);
+    addTranslatedRow(form, label, spin);
     return spin;
 }
 
-void real(QFormLayout *form, const QString &label, double &value, double low, double high,
+void real(QFormLayout *form, const char *label, double &value, double low, double high,
           const std::function<void()> &changed = {}) {
     auto *spin = new QDoubleSpinBox;
     spin->setRange(low, high);
@@ -77,12 +81,12 @@ void real(QFormLayout *form, const QString &label, double &value, double low, do
         if (changed)
             changed();
     });
-    form->addRow(label, spin);
+    addTranslatedRow(form, label, spin);
 }
 
-QCheckBox *boolean(QFormLayout *form, const QString &label, bool &value,
+QCheckBox *boolean(QFormLayout *form, const char *label, bool &value,
                    const std::function<void()> &changed = {}) {
-    auto *check = new QCheckBox(label);
+    auto *check = translatedWidget<QCheckBox>(label);
     check->setChecked(value);
     QObject::connect(check, &QCheckBox::toggled, check, [&value, changed](bool input) {
         value = input;
@@ -93,7 +97,7 @@ QCheckBox *boolean(QFormLayout *form, const QString &label, bool &value,
     return check;
 }
 
-void color(QFormLayout *form, const QString &label, QString &value,
+void color(QFormLayout *form, const char *label, QString &value,
            const std::function<void()> &changed) {
     auto *button = new QPushButton(value);
     auto style = [button, &value] {
@@ -103,37 +107,39 @@ void color(QFormLayout *form, const QString &label, QString &value,
                                   .arg(value, color.lightness() > 128 ? "black" : "white"));
     };
     style();
-    QObject::connect(button, &QPushButton::clicked, button,
-                     [button, &value, changed, style, label] {
-                         const QColor selected = QColorDialog::getColor(
-                             QColor(value), button, label, QColorDialog::DontUseNativeDialog);
-                         if (!selected.isValid())
-                             return;
-                         value = selected.name();
-                         style();
-                         changed();
-                     });
-    form->addRow(label, button);
+    QObject::connect(
+        button, &QPushButton::clicked, button, [button, &value, changed, style, label] {
+            const QColor selected = QColorDialog::getColor(QColor(value), button, I18n::tr(label),
+                                                           QColorDialog::DontUseNativeDialog);
+            if (!selected.isValid())
+                return;
+            value = selected.name();
+            style();
+            changed();
+        });
+    addTranslatedRow(form, label, button);
 }
 
-QComboBox *choice(QFormLayout *form, const QString &label, QString &value,
-                  const QList<QPair<QString, QString>> &options,
+QComboBox *choice(QFormLayout *form, const char *label, QString &value,
+                  const QList<QPair<const char *, QString>> &options,
                   const std::function<void()> &changed = {}) {
     auto *combo = new QComboBox;
     for (const auto &option : options)
-        combo->addItem(option.first, option.second);
+        addTranslatedItem(combo, option.first, option.second);
     combo->setCurrentIndex(std::max(0, combo->findData(value)));
     QObject::connect(combo, &QComboBox::currentIndexChanged, combo, [&value, combo, changed] {
         value = combo->currentData().toString();
         if (changed)
             changed();
     });
-    form->addRow(label, combo);
+    addTranslatedRow(form, label, combo);
     return combo;
 }
 
-QPushButton *button(QHBoxLayout *row, const QString &label, const std::function<void()> &action) {
-    auto *result = new QPushButton(label);
+QPushButton *button(QHBoxLayout *row, const char *label, const std::function<void()> &action) {
+    auto *result = new QPushButton;
+    if (label)
+        bindText(result, label);
     QObject::connect(result, &QPushButton::clicked, result, action);
     row->addWidget(result);
     return result;
@@ -142,7 +148,7 @@ QPushButton *button(QHBoxLayout *row, const QString &label, const std::function<
 
 AlarmEditDialog::AlarmEditDialog(const Alarm &alarm, QWidget *parent)
     : QDialog(parent), original_(alarm) {
-    setWindowTitle(QStringLiteral("编辑闹钟"));
+    bindText(this, QT_TRANSLATE_NOOP("FloatingClock", "Edit alarm"), "windowTitle");
     auto *outer = new QVBoxLayout(this);
     auto *body = new QWidget;
     auto *layout = new QVBoxLayout(body);
@@ -151,25 +157,25 @@ AlarmEditDialog::AlarmEditDialog(const Alarm &alarm, QWidget *parent)
     time_ = new QTimeEdit(QTime::fromString(alarm.time, "HH:mm"));
     time_->setObjectName("alarmTime");
     time_->setDisplayFormat("HH:mm");
-    form->addRow(QStringLiteral("时间"), time_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Time"), time_);
     label_ = new QLineEdit(alarm.label);
     label_->setObjectName("alarmLabel");
-    form->addRow(QStringLiteral("名称"), label_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Name"), label_);
     content_ = new QPlainTextEdit(alarm.content);
     content_->setObjectName("alarmContent");
     content_->setMinimumHeight(100);
-    form->addRow(QStringLiteral("内容"), content_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Content"), content_);
     repeat_ = new QComboBox;
     repeat_->setObjectName("alarmRepeat");
-    repeat_->addItem(QStringLiteral("单次"), "once");
-    repeat_->addItem(QStringLiteral("每天"), "daily");
-    repeat_->addItem(QStringLiteral("工作日"), "weekdays");
-    repeat_->addItem(QStringLiteral("自定义星期"), "custom");
+    addTranslatedItem(repeat_, QT_TRANSLATE_NOOP("FloatingClock", "Once"), "once");
+    addTranslatedItem(repeat_, QT_TRANSLATE_NOOP("FloatingClock", "Daily"), "daily");
+    addTranslatedItem(repeat_, QT_TRANSLATE_NOOP("FloatingClock", "Weekdays"), "weekdays");
+    addTranslatedItem(repeat_, QT_TRANSLATE_NOOP("FloatingClock", "Custom weekdays"), "custom");
     repeat_->setCurrentIndex(repeat_->findData(alarm.repeat));
-    form->addRow(QStringLiteral("重复"), repeat_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Repeat"), repeat_);
     auto *days = new QHBoxLayout;
     for (int day = 0; day < 7; ++day) {
-        auto *check = new QCheckBox(DayNames.at(day));
+        auto *check = translatedWidget<QCheckBox>(DayNames[day]);
         check->setChecked(alarm.weekdays.contains(day));
         check->setEnabled(alarm.repeat == "custom");
         days_.append(check);
@@ -180,22 +186,21 @@ AlarmEditDialog::AlarmEditDialog(const Alarm &alarm, QWidget *parent)
         for (auto *day : days_)
             day->setEnabled(repeat_->currentData() == "custom");
     });
-    inherit_ = new QCheckBox(QStringLiteral("使用全局提醒超时"));
+    inherit_ = translatedWidget<QCheckBox>(
+        QT_TRANSLATE_NOOP("FloatingClock", "Use the global reminder timeout"));
     inherit_->setObjectName("inheritTimeout");
     inherit_->setChecked(!alarm.timeoutSeconds);
     form->addRow(inherit_);
     timeout_ = new QSpinBox;
     timeout_->setObjectName("alarmTimeout");
     timeout_->setRange(1, 3600);
-    timeout_->setSuffix(QStringLiteral(" 秒"));
+    bindText(timeout_, QT_TRANSLATE_NOOP("FloatingClock", " s"), "suffix");
     timeout_->setValue(alarm.timeoutSeconds.value_or(60));
     timeout_->setEnabled(alarm.timeoutSeconds.has_value());
-    form->addRow(QStringLiteral("自动停止"), timeout_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Stop automatically"), timeout_);
     connect(inherit_, &QCheckBox::toggled, timeout_,
             [this](bool checked) { timeout_->setEnabled(!checked); });
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
     connect(buttons, &QDialogButtonBox::accepted, this, &AlarmEditDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     auto *scroll = new QScrollArea;
@@ -212,7 +217,7 @@ Alarm AlarmEditDialog::resultAlarm() const {
     result.time = time_->time().toString("HH:mm");
     result.label = label_->text().trimmed();
     if (result.label.isEmpty())
-        result.label = QStringLiteral("闹钟");
+        result.label = I18n::tr("Alarm");
     result.content = content_->toPlainText();
     result.repeat = repeat_->currentData().toString();
     result.weekdays.clear();
@@ -228,7 +233,7 @@ Alarm AlarmEditDialog::resultAlarm() const {
 void AlarmEditDialog::accept() {
     const auto alarm = resultAlarm();
     if (alarm.repeat == "custom" && alarm.weekdays.isEmpty()) {
-        QMessageBox::warning(this, QStringLiteral("闹钟"), QStringLiteral("请至少选择一个星期。"));
+        QMessageBox::warning(this, I18n::tr("Alarm"), I18n::tr("Select at least one weekday."));
         return;
     }
     QDialog::accept();
@@ -244,90 +249,123 @@ void AlarmEditDialog::markAlarmFired(const Alarm &fired) {
 SettingsDialog::SettingsDialog(const Config &config, const Capabilities &capabilities,
                                QWidget *parent)
     : QDialog(parent), draft_(config) {
-    setWindowTitle(QStringLiteral("浮动时钟 — 设置"));
+    bindText(this, QT_TRANSLATE_NOOP("FloatingClock", "Floating Clock — Settings"), "windowTitle");
     auto *layout = new QVBoxLayout(this);
     auto *tabs = new QTabWidget;
     layout->addWidget(tabs, 1);
     const auto preview = [this] { emit previewRequested(draft_); };
     QFormLayout *form;
-    tabs->addTab(scrollPage(&form), QStringLiteral("外观"));
-    integer(form, QStringLiteral("字号"), draft_.fontSize, 8, 400, preview)
-        ->setObjectName("fontSize");
-    real(form, QStringLiteral("整体透明度"), draft_.opacity, 0.1, 1.0, preview);
-    color(form, QStringLiteral("文字颜色"), draft_.color, preview);
-    auto *autoColor = boolean(form, QStringLiteral("自动适配背景色"), draft_.autoColor, preview);
-    autoColor->setEnabled(capabilities.screenSampling);
-    color(form, QStringLiteral("深色背景用色"), draft_.darkBackgroundColor, preview);
-    color(form, QStringLiteral("浅色背景用色"), draft_.lightBackgroundColor, preview);
-    boolean(form, QStringLiteral("显示秒"), draft_.showSeconds, preview);
-    boolean(form, QStringLiteral("显示日期"), draft_.showDate, preview);
-    boolean(form, QStringLiteral("鼠标穿透"), draft_.clickThrough)
+    addTranslatedTab(tabs, scrollPage(&form), QT_TRANSLATE_NOOP("FloatingClock", "General"));
+    choice(form, QT_TRANSLATE_NOOP("FloatingClock", "Language"), draft_.language,
+           {{QT_TRANSLATE_NOOP("FloatingClock", "Follow system"), "system"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "English"), "en"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Simplified Chinese"), "zh_CN"}},
+           preview)
+        ->setObjectName("language");
+    auto *languageHint = translatedWidget<QLabel>(QT_TRANSLATE_NOOP(
+        "FloatingClock",
+        "Language changes are previewed immediately. Cancel restores the previous language."));
+    languageHint->setWordWrap(true);
+    form->addRow(languageHint);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Click through"), draft_.clickThrough)
         ->setEnabled(capabilities.clickThrough);
-    boolean(form, QStringLiteral("登录时自启动"), draft_.startOnBoot);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Start at login"), draft_.startOnBoot);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Allow reminders when the screen is off"),
+            draft_.ringWhenScreenOff);
+    auto *power = new QLabel;
+    bindTranslation(power, [power, detectable = capabilities.displayPower] {
+        power->setText(detectable ? I18n::tr("By default, screen-off alarms stay silent and "
+                                             "one-shot alarms are not consumed.")
+                                  : I18n::tr("Display power cannot be detected on this system. "
+                                             "Unknown display power is treated as on."));
+    });
+    power->setWordWrap(true);
+    form->addRow(power);
     if (!capabilities.explanation.isEmpty()) {
-        auto *notice = new QLabel(capabilities.explanation);
+        auto *notice = new QLabel;
+        bindTranslation(notice, [notice, source = capabilities.explanation] {
+            notice->setText(I18n::tr(source.toUtf8().constData()));
+        });
         notice->setWordWrap(true);
         form->addRow(notice);
     }
 
-    tabs->addTab(scrollPage(&form), QStringLiteral("提醒样式"));
-    color(form, QStringLiteral("文字颜色"), draft_.popupTextColor, preview);
-    color(form, QStringLiteral("背景颜色"), draft_.popupBackgroundColor, preview);
-    real(form, QStringLiteral("背景透明度"), draft_.popupOpacity, 0.0, 1.0, preview);
-    real(form, QStringLiteral("字号倍率"), draft_.popupFontScale, 0.5, 3.0, preview);
-    boolean(form, QStringLiteral("闪烁"), draft_.popupFlash, preview);
-    choice(form, QStringLiteral("布局"), draft_.popupLayout,
-           {{QStringLiteral("名称/内容在上"), "label_time"},
-            {QStringLiteral("时间在上"), "time_label"},
-            {QStringLiteral("仅名称/内容"), "label_only"}},
+    addTranslatedTab(tabs, scrollPage(&form), QT_TRANSLATE_NOOP("FloatingClock", "Appearance"));
+    integer(form, QT_TRANSLATE_NOOP("FloatingClock", "Font size"), draft_.fontSize, 8, 400, preview)
+        ->setObjectName("fontSize");
+    real(form, QT_TRANSLATE_NOOP("FloatingClock", "Window opacity"), draft_.opacity, 0.1, 1.0,
+         preview);
+    color(form, QT_TRANSLATE_NOOP("FloatingClock", "Text color"), draft_.color, preview);
+    auto *autoColor =
+        boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Adapt text color to the background"),
+                draft_.autoColor, preview);
+    autoColor->setEnabled(capabilities.screenSampling);
+    color(form, QT_TRANSLATE_NOOP("FloatingClock", "Color on dark backgrounds"),
+          draft_.darkBackgroundColor, preview);
+    color(form, QT_TRANSLATE_NOOP("FloatingClock", "Color on light backgrounds"),
+          draft_.lightBackgroundColor, preview);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Show seconds"), draft_.showSeconds, preview);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Show date"), draft_.showDate, preview);
+
+    addTranslatedTab(tabs, scrollPage(&form),
+                     QT_TRANSLATE_NOOP("FloatingClock", "Reminder appearance"));
+    color(form, QT_TRANSLATE_NOOP("FloatingClock", "Text color"), draft_.popupTextColor, preview);
+    color(form, QT_TRANSLATE_NOOP("FloatingClock", "Background color"), draft_.popupBackgroundColor,
+          preview);
+    real(form, QT_TRANSLATE_NOOP("FloatingClock", "Background opacity"), draft_.popupOpacity, 0.0,
+         1.0, preview);
+    real(form, QT_TRANSLATE_NOOP("FloatingClock", "Font scale"), draft_.popupFontScale, 0.5, 3.0,
+         preview);
+    boolean(form, QT_TRANSLATE_NOOP("FloatingClock", "Flash"), draft_.popupFlash, preview);
+    choice(form, QT_TRANSLATE_NOOP("FloatingClock", "Layout"), draft_.popupLayout,
+           {{QT_TRANSLATE_NOOP("FloatingClock", "Name/content above time"), "label_time"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Time above name/content"), "time_label"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Name/content only"), "label_only"}},
            preview);
-    auto *popupPreview = new QPushButton(QStringLiteral("预览提醒（3 秒）"));
+    auto *popupPreview = translatedWidget<QPushButton>(
+        QT_TRANSLATE_NOOP("FloatingClock", "Preview reminder (3 seconds)"));
     connect(popupPreview, &QPushButton::clicked, this,
             [this] { emit reminderPreviewRequested(draft_); });
     form->addRow(popupPreview);
 
-    tabs->addTab(scrollPage(&form), QStringLiteral("声音与超时"));
-    choice(form, QStringLiteral("声音"), draft_.soundMode,
-           {{QStringLiteral("无声"), "silent"},
-            {QStringLiteral("系统/内置提示音"), "system"},
-            {QStringLiteral("自定义 WAV"), "custom"}});
+    addTranslatedTab(tabs, scrollPage(&form),
+                     QT_TRANSLATE_NOOP("FloatingClock", "Sound and timeout"));
+    choice(form, QT_TRANSLATE_NOOP("FloatingClock", "Sound"), draft_.soundMode,
+           {{QT_TRANSLATE_NOOP("FloatingClock", "Silent"), "silent"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "System/built-in sound"), "system"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Custom WAV"), "custom"}});
 #ifdef Q_OS_WIN
-    choice(form, QStringLiteral("系统提示音"), draft_.soundAlias,
-           {{QStringLiteral("错误"), "SystemHand"},
-            {QStringLiteral("星号"), "SystemAsterisk"},
-            {QStringLiteral("感叹"), "SystemExclamation"},
-            {QStringLiteral("问题"), "SystemQuestion"},
-            {QStringLiteral("默认"), "SystemDefault"},
-            {QStringLiteral("Windows 启动"), "SystemStart"},
-            {QStringLiteral("Windows 退出"), "SystemExit"}});
+    choice(form, QT_TRANSLATE_NOOP("FloatingClock", "System sound"), draft_.soundAlias,
+           {{QT_TRANSLATE_NOOP("FloatingClock", "Error"), "SystemHand"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Asterisk"), "SystemAsterisk"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Exclamation"), "SystemExclamation"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Question"), "SystemQuestion"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Default"), "SystemDefault"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Windows startup"), "SystemStart"},
+            {QT_TRANSLATE_NOOP("FloatingClock", "Windows exit"), "SystemExit"}});
 #endif
     auto *soundPath = new QLineEdit(draft_.soundPath);
     connect(soundPath, &QLineEdit::textChanged, this,
             [this](const QString &path) { draft_.soundPath = path; });
-    form->addRow(QStringLiteral("WAV 文件"), soundPath);
-    auto *browse = new QPushButton(QStringLiteral("浏览…"));
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "WAV file"), soundPath);
+    auto *browse = translatedWidget<QPushButton>(QT_TRANSLATE_NOOP("FloatingClock", "Browse…"));
     connect(browse, &QPushButton::clicked, this, [this, soundPath] {
         // Native Windows file dialogs can block Qt timers, including reminder expiration.
         const auto path = QFileDialog::getOpenFileName(
-            this, QStringLiteral("选择提示音"), draft_.soundPath,
-            QStringLiteral("WAV 音频 (*.wav)"), nullptr, QFileDialog::DontUseNativeDialog);
+            this, I18n::tr("Choose a reminder sound"), draft_.soundPath,
+            I18n::tr("WAV audio (*.wav)"), nullptr, QFileDialog::DontUseNativeDialog);
         if (!path.isEmpty())
             soundPath->setText(path);
     });
     form->addRow(browse);
-    auto *soundPreview = new QPushButton(QStringLiteral("试听（最多 3 秒）"));
+    auto *soundPreview = translatedWidget<QPushButton>(
+        QT_TRANSLATE_NOOP("FloatingClock", "Test sound (up to 3 seconds)"));
     connect(soundPreview, &QPushButton::clicked, this,
             [this] { emit soundPreviewRequested(draft_); });
     form->addRow(soundPreview);
-    integer(form, QStringLiteral("默认自动停止（秒）"), draft_.alarmTimeoutSeconds, 1, 3600)
+    integer(form, QT_TRANSLATE_NOOP("FloatingClock", "Default timeout (seconds)"),
+            draft_.alarmTimeoutSeconds, 1, 3600)
         ->setObjectName("defaultTimeout");
-    boolean(form, QStringLiteral("屏幕关闭时仍提醒"), draft_.ringWhenScreenOff);
-    auto *power =
-        new QLabel(capabilities.displayPower
-                       ? QStringLiteral("默认关屏不响，且不消耗单次闹钟。")
-                       : QStringLiteral("当前系统无法检测关屏，未知状态按屏幕开启处理。"));
-    power->setWordWrap(true);
-    form->addRow(power);
 
     auto *alarmPage = new QWidget;
     auto *alarmLayout = new QVBoxLayout(alarmPage);
@@ -336,9 +374,9 @@ SettingsDialog::SettingsDialog(const Config &config, const Capabilities &capabil
     alarms_->setWordWrap(true);
     alarmLayout->addWidget(alarms_, 1);
     auto *row = new QHBoxLayout;
-    button(row, QStringLiteral("新增"), [this] { editAlarm(true); });
-    button(row, QStringLiteral("编辑"), [this] { editAlarm(false); });
-    button(row, QStringLiteral("删除"), [this] {
+    button(row, QT_TRANSLATE_NOOP("FloatingClock", "Add"), [this] { editAlarm(true); });
+    button(row, QT_TRANSLATE_NOOP("FloatingClock", "Edit"), [this] { editAlarm(false); });
+    button(row, QT_TRANSLATE_NOOP("FloatingClock", "Delete"), [this] {
         const int row = alarms_->currentRow();
         if (row >= 0) {
             draft_.alarms.removeAt(row);
@@ -352,11 +390,9 @@ SettingsDialog::SettingsDialog(const Config &config, const Capabilities &capabil
         if (row >= 0 && row < draft_.alarms.size())
             draft_.alarms[row].enabled = item->checkState() == Qt::Checked;
     });
-    refreshAlarms();
-    tabs->addTab(alarmPage, QStringLiteral("闹钟"));
+    bindTranslation(this, [this] { refreshAlarms(); });
+    addTranslatedTab(tabs, alarmPage, QT_TRANSLATE_NOOP("FloatingClock", "Alarms"));
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    buttons->button(QDialogButtonBox::Ok)->setText(QStringLiteral("确定"));
-    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("取消"));
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(buttons);
@@ -374,8 +410,8 @@ void SettingsDialog::refreshAlarms() {
     alarms_->clear();
     for (const auto &alarm : draft_.alarms) {
         const QString timeout = alarm.timeoutSeconds
-                                    ? QStringLiteral("%1 秒后停止").arg(*alarm.timeoutSeconds)
-                                    : QStringLiteral("全局超时");
+                                    ? I18n::tr("Stop after %1 s").arg(*alarm.timeoutSeconds)
+                                    : I18n::tr("Global timeout");
         auto *item =
             new QListWidgetItem(QStringLiteral("%1  %2 · %3 · %4")
                                     .arg(alarm.time, alarm.label, repeatName(alarm), timeout));
@@ -417,14 +453,19 @@ void SettingsDialog::markAlarmFired(const Alarm &fired) {
 
 AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent) {
     setObjectName("aboutDialog");
-    setWindowTitle(QStringLiteral("浮动时钟 — 关于与许可"));
+    bindText(this, QT_TRANSLATE_NOOP("FloatingClock", "Floating Clock — About and licenses"),
+             "windowTitle");
     auto *layout = new QVBoxLayout(this);
-    auto *description = new QLabel(
-        QStringLiteral("浮动时钟 %1\nQt %2\n应用许可证：GNU AGPL-3.0").arg(FC_VERSION, qVersion()));
+    auto *description = new QLabel;
+    bindTranslation(description, [description] {
+        description->setText(I18n::tr("Floating Clock %1\nQt %2\nApplication license: GNU AGPL-3.0")
+                                 .arg(FC_VERSION, qVersion()));
+    });
     description->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(description);
-    auto *source = new QLabel(
-        QStringLiteral("<a href=\"https://github.com/sunging/floating_clock\">源码与构建说明</a>"));
+    auto *source = translatedWidget<QLabel>(QT_TRANSLATE_NOOP(
+        "FloatingClock", "<a href=\"https://github.com/sunging/floating_clock\">Source code and "
+                         "build instructions</a>"));
     source->setOpenExternalLinks(true);
     layout->addWidget(source);
     auto *text = new QPlainTextEdit;
@@ -434,23 +475,27 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent) {
     if (notices.open(QIODevice::ReadOnly))
         text->setPlainText(QString::fromUtf8(notices.readAll()));
     else
-        text->setPlainText(QStringLiteral("完整许可说明位于发行包的 licenses 目录。"));
+        bindText(text,
+                 QT_TRANSLATE_NOOP(
+                     "FloatingClock",
+                     "Complete license notices are available in the package's licenses directory."),
+                 "plainText");
     layout->addWidget(text, 1);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-    buttons->button(QDialogButtonBox::Close)->setText(QStringLiteral("关闭"));
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    auto *save = buttons->addButton(QStringLiteral("导出许可文本…"), QDialogButtonBox::ActionRole);
+    auto *save = buttons->addButton(QString(), QDialogButtonBox::ActionRole);
+    bindText(save, QT_TRANSLATE_NOOP("FloatingClock", "Export license text…"));
     save->setEnabled(notices.isOpen());
     connect(save, &QPushButton::clicked, this, [this, text] {
         const auto path = QFileDialog::getSaveFileName(
-            this, QStringLiteral("导出许可文本"), "FloatingClock-licenses.txt",
-            QStringLiteral("文本文件 (*.txt)"), nullptr, QFileDialog::DontUseNativeDialog);
+            this, I18n::tr("Export license text"), "FloatingClock-licenses.txt",
+            I18n::tr("Text files (*.txt)"), nullptr, QFileDialog::DontUseNativeDialog);
         if (path.isEmpty())
             return;
         QSaveFile file(path);
         const auto bytes = text->toPlainText().toUtf8();
         if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-            QMessageBox::warning(this, QStringLiteral("导出失败"), file.errorString());
+            QMessageBox::warning(this, I18n::tr("Export failed"), file.errorString());
     });
     layout->addWidget(buttons);
     resize(QSize(700, 520).boundedTo(screen()->availableGeometry().size() - QSize(40, 40)));
@@ -458,19 +503,20 @@ AboutDialog::AboutDialog(QWidget *parent) : QDialog(parent) {
 
 ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
     : QDialog(parent), timers_(timers), hasTray_(hasTray) {
-    setWindowTitle(QStringLiteral("浮动时钟 — 控制面板"));
+    bindText(this, QT_TRANSLATE_NOOP("FloatingClock", "Floating Clock — Control panel"),
+             "windowTitle");
     auto *layout = new QVBoxLayout(this);
     auto *form = new QFormLayout;
     mode_ = new QComboBox;
-    mode_->addItem(QStringLiteral("时钟"), "clock");
-    mode_->addItem(QStringLiteral("倒计时"), "countdown");
-    mode_->addItem(QStringLiteral("秒表"), "stopwatch");
+    addTranslatedItem(mode_, QT_TRANSLATE_NOOP("FloatingClock", "Clock"), "clock");
+    addTranslatedItem(mode_, QT_TRANSLATE_NOOP("FloatingClock", "Countdown"), "countdown");
+    addTranslatedItem(mode_, QT_TRANSLATE_NOOP("FloatingClock", "Stopwatch"), "stopwatch");
     mode_->setCurrentIndex(std::max(0, mode_->findData(timers.displayMode)));
     connect(mode_, &QComboBox::currentIndexChanged, this, [this] {
         timers_.displayMode = mode_->currentData().toString();
         emit timersChanged();
     });
-    form->addRow(QStringLiteral("浮窗显示"), mode_);
+    addTranslatedRow(form, QT_TRANSLATE_NOOP("FloatingClock", "Floating display"), mode_);
     layout->addLayout(form);
     auto *tabs = new QTabWidget;
     auto *countdownPage = new QWidget;
@@ -480,23 +526,23 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
     countdown_->setStyleSheet("font-size: 28px;");
     countdownLayout->addWidget(countdown_);
     auto *durationRow = new QHBoxLayout;
-    auto makeDuration = [durationRow](int maximum, const QString &suffix) {
+    auto makeDuration = [durationRow](int maximum, const char *suffix) {
         auto *spin = new QSpinBox;
         spin->setRange(0, maximum);
-        spin->setSuffix(suffix);
+        bindText(spin, suffix, "suffix");
         durationRow->addWidget(spin);
         return spin;
     };
-    hours_ = makeDuration(99, QStringLiteral(" 时"));
-    minutes_ = makeDuration(59, QStringLiteral(" 分"));
-    seconds_ = makeDuration(59, QStringLiteral(" 秒"));
+    hours_ = makeDuration(99, QT_TRANSLATE_NOOP("FloatingClock", " h"));
+    minutes_ = makeDuration(59, QT_TRANSLATE_NOOP("FloatingClock", " min"));
+    seconds_ = makeDuration(59, QT_TRANSLATE_NOOP("FloatingClock", " s"));
     const qint64 seconds = timers_.countdownDuration() / 1000;
     hours_->setValue(int(seconds / 3600));
     minutes_->setValue(int(seconds / 60 % 60));
     seconds_->setValue(int(seconds % 60));
     countdownLayout->addLayout(durationRow);
     auto *actions = new QHBoxLayout;
-    countdownAction_ = button(actions, QString(), [this] {
+    countdownAction_ = button(actions, nullptr, [this] {
         if (timers_.countdownState() == Timers::State::Running)
             timers_.pauseCountdown();
         else if (timers_.countdownState() == Timers::State::Paused)
@@ -505,7 +551,7 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
             const qint64 millis =
                 (hours_->value() * 3600LL + minutes_->value() * 60 + seconds_->value()) * 1000;
             if (millis <= 0) {
-                showStatus(QStringLiteral("请设置至少 1 秒的倒计时。"));
+                showStatus(I18n::tr("Set a countdown of at least 1 second."));
                 return;
             }
             timers_.startCountdown(millis);
@@ -513,14 +559,14 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
         emit timersChanged();
         refresh();
     });
-    button(actions, QStringLiteral("重置"), [this] {
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Reset"), [this] {
         timers_.resetCountdown();
         emit timersChanged();
         refresh();
     });
     countdownLayout->addLayout(actions);
     countdownLayout->addStretch();
-    tabs->addTab(countdownPage, QStringLiteral("倒计时"));
+    addTranslatedTab(tabs, countdownPage, QT_TRANSLATE_NOOP("FloatingClock", "Countdown"));
     auto *stopwatchPage = new QWidget;
     auto *stopwatchLayout = new QVBoxLayout(stopwatchPage);
     stopwatch_ = new QLabel;
@@ -528,7 +574,7 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
     stopwatch_->setStyleSheet("font-size: 28px;");
     stopwatchLayout->addWidget(stopwatch_);
     actions = new QHBoxLayout;
-    stopwatchAction_ = button(actions, QString(), [this] {
+    stopwatchAction_ = button(actions, nullptr, [this] {
         if (timers_.stopwatchRunning())
             timers_.pauseStopwatch();
         else
@@ -536,12 +582,12 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
         emit timersChanged();
         refresh();
     });
-    button(actions, QStringLiteral("计次"), [this] {
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Lap"), [this] {
         timers_.lap();
         emit timersChanged();
         refresh();
     });
-    button(actions, QStringLiteral("重置"), [this] {
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Reset"), [this] {
         timers_.resetStopwatch();
         emit timersChanged();
         refresh();
@@ -549,48 +595,52 @@ ControlPanel::ControlPanel(Timers &timers, bool hasTray, QWidget *parent)
     stopwatchLayout->addLayout(actions);
     laps_ = new QListWidget;
     stopwatchLayout->addWidget(laps_, 1);
-    tabs->addTab(stopwatchPage, QStringLiteral("秒表"));
+    addTranslatedTab(tabs, stopwatchPage, QT_TRANSLATE_NOOP("FloatingClock", "Stopwatch"));
     layout->addWidget(tabs, 1);
     actions = new QHBoxLayout;
-    button(actions, QStringLiteral("设置…"), [this] { emit settingsRequested(); });
-    button(actions, QStringLiteral("移动浮窗"), [this] { emit moveRequested(); });
-    button(actions, QStringLiteral("停止提醒"), [this] { emit stopRequested(); });
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Settings…"),
+           [this] { emit settingsRequested(); });
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Move clock"),
+           [this] { emit moveRequested(); });
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Stop reminders"),
+           [this] { emit stopRequested(); });
     layout->addLayout(actions);
     actions = new QHBoxLayout;
-    button(actions, QStringLiteral("导入旧配置…"), [this] { emit importRequested(); });
-    button(actions, QStringLiteral("关于与许可…"), [this] {
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Import legacy settings…"),
+           [this] { emit importRequested(); });
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "About and licenses…"), [this] {
         auto *dialog = new AboutDialog(this);
         dialog->setAttribute(Qt::WA_DeleteOnClose);
         dialog->open();
     });
-    button(actions, QStringLiteral("退出"), [this] { emit quitRequested(); });
+    button(actions, QT_TRANSLATE_NOOP("FloatingClock", "Quit"), [this] { emit quitRequested(); });
     layout->addLayout(actions);
     status_ = new QLabel;
     status_->setWordWrap(true);
     status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     layout->addWidget(status_);
     resize(QSize(500, 360).boundedTo(screen()->availableGeometry().size() - QSize(40, 40)));
-    refresh();
+    bindTranslation(this, [this] { refresh(); });
 }
 
 void ControlPanel::refresh() {
     const auto state = timers_.countdownState();
     QString suffix;
     if (state == Timers::State::Paused)
-        suffix = QStringLiteral("（已暂停）");
+        suffix = I18n::tr(" (paused)");
     else if (state == Timers::State::Finished)
-        suffix = QStringLiteral("（已完成）");
+        suffix = I18n::tr(" (finished)");
     countdown_->setText(Timers::formatDuration(timers_.countdownRemaining()) + suffix);
-    countdownAction_->setText(state == Timers::State::Running  ? QStringLiteral("暂停")
-                              : state == Timers::State::Paused ? QStringLiteral("继续")
-                                                               : QStringLiteral("开始"));
+    countdownAction_->setText(state == Timers::State::Running  ? I18n::tr("Pause")
+                              : state == Timers::State::Paused ? I18n::tr("Resume")
+                                                               : I18n::tr("Start"));
     const bool editable = state == Timers::State::Idle || state == Timers::State::Finished;
     hours_->setEnabled(editable);
     minutes_->setEnabled(editable);
     seconds_->setEnabled(editable);
     stopwatch_->setText(Timers::formatDuration(timers_.stopwatchElapsed(), true));
-    stopwatchAction_->setText(timers_.stopwatchRunning() ? QStringLiteral("暂停")
-                                                         : QStringLiteral("开始/继续"));
+    stopwatchAction_->setText(timers_.stopwatchRunning() ? I18n::tr("Pause")
+                                                         : I18n::tr("Start/resume"));
     if (laps_->count() != timers_.laps().size()) {
         laps_->clear();
         qint64 previous = 0;

@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/translations">
+    <file>floating-clock_zh_CN.qm</file>
+  </qresource>
+</RCC>

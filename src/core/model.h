@@ -17,7 +17,7 @@ double readReal(const QVariant &raw, double fallback, double low, double high);
 struct Alarm {
     QString id;
     QString time = QStringLiteral("08:00");
-    QString label = QStringLiteral("闹钟");
+    QString label;
     QString content;
     bool enabled = true;
     QString repeat = QStringLiteral("daily");
@@ -33,6 +33,7 @@ struct Alarm {
 };
 
 struct Config {
+    QString language = QStringLiteral("system");
     int fontSize = 48;
     double opacity = 0.75;
     QString color = QStringLiteral("#FFFFFF");
@@ -82,6 +83,8 @@ struct Reminder {
     QString content;
     qint64 expiresAt = 0;
     ReminderSound sound;
+    bool countdown = false;
+    QString displayTitle() const;
 };
 
 class ReminderController {

@@ -1,4 +1,5 @@
 #include "core/model.h"
+#include "core/i18n.h"
 
 #include <QJsonArray>
 #include <QRegularExpression>
@@ -29,7 +30,7 @@ int readInt(const QVariant &raw, int fallback, int low, int high) {
     return static_cast<int>(readReal(raw, fallback, low, high));
 }
 
-Alarm::Alarm() : id(QUuid::createUuid().toString(QUuid::Id128)) {}
+Alarm::Alarm() : id(QUuid::createUuid().toString(QUuid::Id128)), label(I18n::tr("Alarm")) {}
 
 bool Alarm::matches(const QDateTime &now) const {
     if (!enabled || time != now.time().toString("HH:mm"))
@@ -82,7 +83,7 @@ std::optional<Alarm> Alarm::fromJson(const QJsonValue &value) {
     if (!hhmm.match(alarm.time).hasMatch())
         return std::nullopt;
     alarm.id = obj.value("id").toString(alarm.id);
-    alarm.label = obj.value("label").toString("闹钟");
+    alarm.label = obj.value("label").toString(alarm.label);
     alarm.content = obj.value("content").toString();
     alarm.enabled = readBool(obj.value("enabled").toVariant(), true);
     alarm.repeat = obj.value("repeat_type").toString();
@@ -136,8 +137,12 @@ void ReminderController::add(const Alarm &alarm, const Config &config, qint64 no
 
 void ReminderController::addCountdown(const Config &config, qint64 now) {
     Alarm alarm;
-    alarm.label = QStringLiteral("倒计时结束");
     add(alarm, config, now);
+    items_.last().countdown = true;
+}
+
+QString Reminder::displayTitle() const {
+    return countdown ? I18n::tr("Countdown finished") : title;
 }
 
 const ReminderSound *ReminderController::sound() const {
@@ -168,8 +173,8 @@ const QVector<Reminder> &ReminderController::items() const {
 }
 
 QString ReminderController::title() const {
-    return items_.size() == 1 ? items_.front().title
-                              : QStringLiteral("%1 个提醒").arg(items_.size());
+    return items_.size() == 1 ? items_.front().displayTitle()
+                              : I18n::tr("%n reminders", nullptr, int(items_.size()));
 }
 
 QString ReminderController::content() const {
@@ -177,7 +182,8 @@ QString ReminderController::content() const {
         return items_.front().content;
     QStringList parts;
     for (const auto &item : items_)
-        parts.append(item.title + (item.content.isEmpty() ? QString() : '\n' + item.content));
+        parts.append(item.displayTitle() +
+                     (item.content.isEmpty() ? QString() : '\n' + item.content));
     return parts.join("\n\n");
 }
 

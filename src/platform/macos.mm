@@ -1,3 +1,4 @@
+#include "core/i18n.h"
 #include "platform/services.h"
 
 #import <AppKit/AppKit.h>
@@ -62,8 +63,10 @@ public:
     Capabilities capabilities() const override {
         auto result = capabilities_;
         if (!CGPreflightScreenCaptureAccess())
-            result.explanation =
-                QStringLiteral("自动取色需要屏幕录制权限；可在启用时授权，拒绝后使用固定颜色。");
+            result.explanation = QString::fromUtf8(QT_TRANSLATE_NOOP(
+                "FloatingClock",
+                "Automatic background sampling requires screen recording permission. You can grant "
+                "it when enabling sampling; if denied, a fixed color is used."));
         return result;
     }
 
@@ -118,7 +121,8 @@ public:
                 return true;
         }
         if (error)
-            *error = QStringLiteral("无法保存登录启动设置。请检查 LaunchAgents 目录权限。");
+            *error = I18n::tr(
+                "Could not save login startup settings. Check LaunchAgents directory permissions.");
         return false;
     }
 

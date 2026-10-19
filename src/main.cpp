@@ -1,4 +1,5 @@
 #include "app.h"
+#include "core/i18n.h"
 #include "core/single_instance.h"
 #include "version.h"
 
@@ -12,7 +13,6 @@
 #include <QLibraryInfo>
 #include <QMessageBox>
 #include <QSaveFile>
-#include <QTranslator>
 
 namespace {
 class SilentDiagnosticSound final : public fc::SoundService {
@@ -20,6 +20,17 @@ public:
     void play(const fc::Config &) override {}
     void stop() override {}
 };
+
+void configureParser(QCommandLineParser &parser) {
+    parser.setApplicationDescription(
+        fc::I18n::tr("Floating clock, alarms, countdown and stopwatch"));
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addOption({"config", fc::I18n::tr("Use the specified settings file"), "file"});
+    parser.addOption(
+        {"smoke-test", fc::I18n::tr("Run an isolated startup check; requires --config")});
+    parser.addOption({"control", fc::I18n::tr("Open the control panel at startup")});
+}
 } // namespace
 
 int main(int argc, char **argv) {
@@ -28,41 +39,27 @@ int main(int argc, char **argv) {
     QCoreApplication::setApplicationVersion(FC_VERSION);
     QCoreApplication::setOrganizationName("FloatingClock");
     QApplication::setWindowIcon(QIcon(":/icons/clock.png"));
-    QTranslator qtTranslation;
-#ifdef Q_OS_WIN
-    const bool embeddedTranslation = qtTranslation.load(":/translations/qtbase_zh_CN.qm");
-    if (embeddedTranslation)
-        app.installTranslator(&qtTranslation);
-#else
-    const QString executableDir = QCoreApplication::applicationDirPath();
-    const QStringList translationPaths{executableDir + "/translations",
-                                       executableDir + "/../Resources/translations",
-                                       executableDir + "/../share/floating-clock/translations",
-                                       QLibraryInfo::path(QLibraryInfo::TranslationsPath)};
-    for (const auto &directory : translationPaths) {
-        if (qtTranslation.load("qtbase_zh_CN", directory)) {
-            app.installTranslator(&qtTranslation);
-            break;
-        }
-    }
-#endif
+    auto &language = fc::LanguageManager::instance();
+    language.apply("system");
     app.setQuitOnLastWindowClosed(false);
-    QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral("浮动时钟、闹钟、倒计时与秒表"));
-    parser.addHelpOption();
-    parser.addVersionOption();
-    parser.addOption({"config", QStringLiteral("使用指定配置文件"), "file"});
-    parser.addOption({"smoke-test", QStringLiteral("隔离启动检查；必须同时指定 --config")});
-    parser.addOption({"control", QStringLiteral("启动后打开控制面板")});
-    parser.process(app);
-    const bool smoke = parser.isSet("smoke-test");
-    if (smoke && !parser.isSet("config")) {
+    QCommandLineParser bootstrap;
+    configureParser(bootstrap);
+    if (!bootstrap.parse(app.arguments()))
+        bootstrap.process(app);
+    const bool smoke = bootstrap.isSet("smoke-test");
+    if (smoke && !bootstrap.isSet("config")) {
         qCritical("--smoke-test requires an isolated --config path");
         return 2;
     }
     const auto path =
-        parser.isSet("config") ? parser.value("config") : fc::ConfigStore::defaultPath();
+        bootstrap.isSet("config") ? bootstrap.value("config") : fc::ConfigStore::defaultPath();
     fc::ConfigStore store(path);
+    QString languageError;
+    if (!language.apply(store.load().language, &languageError))
+        qWarning().noquote() << languageError;
+    QCommandLineParser parser;
+    configureParser(parser);
+    parser.process(app);
     fc::SingleInstance instance(path);
     QString error;
     const auto result = instance.start(&error);
@@ -70,7 +67,7 @@ int main(int argc, char **argv) {
         return smoke ? 3 : 0;
     if (result == fc::SingleInstance::Result::Error) {
         if (!smoke)
-            QMessageBox::critical(nullptr, QStringLiteral("浮动时钟"), error);
+            QMessageBox::critical(nullptr, fc::I18n::tr("Floating Clock"), error);
         qCritical().noquote() << error;
         return 1;
     }
@@ -91,9 +88,11 @@ int main(int argc, char **argv) {
             QString failure;
             bool ok = !QIcon(":/icons/clock.png").isNull() &&
                       QFileInfo(":/sounds/chime.wav").size() > 44 &&
+                      fc::LanguageManager::applicationCatalogAvailable() &&
                       controller.clock().isVisible() && store.save(controller.config(), &failure) &&
                       store.saveRuntime(controller.timers().snapshot(), &failure);
 #ifdef Q_OS_WIN
+            const bool embeddedTranslation = fc::LanguageManager::embeddedQtCatalogAvailable();
             QFile notices(":/licenses/notices.txt");
             const bool embeddedLicenses =
                 notices.open(QIODevice::ReadOnly) &&
@@ -112,7 +111,10 @@ int main(int argc, char **argv) {
                     {"version", FC_VERSION},
                     {"qt_version", qVersion()},
                     {"qt_linkage", QLibraryInfo::isSharedBuild() ? "shared" : "static"},
-                    {"chinese_qt_translation", !qtTranslation.isEmpty()},
+                    {"language", language.language()},
+                    {"application_translation_catalog",
+                     fc::LanguageManager::applicationCatalogAvailable()},
+                    {"chinese_qt_translation", language.qtTranslationLoaded()},
                     {"platform", QGuiApplication::platformName()}};
 #ifdef Q_OS_WIN
                 result.insert("embedded_translation", embeddedTranslation);

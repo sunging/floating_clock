@@ -39,7 +39,9 @@ def generate_bundle(qt, output, *, static=False, compiler=None):
         inputs.update({f"{label}/{path.relative_to(directory).as_posix()}": path for path in files})
     output.parent.mkdir(parents=True, exist_ok=True)
     notices = output.with_suffix(".txt")
-    sections = ["浮动时钟：许可证与第三方说明\n源码及构建说明：https://github.com/sunging/floating_clock\n"]
+    sections = [
+        "Floating Clock: licenses and third-party notices\nSource and build instructions: https://github.com/sunging/floating_clock\n"
+    ]
     for label, source in sorted(inputs.items()):
         sections.append(
             f"\n{'=' * 72}\n{label}\n{'=' * 72}\n\n" + source.read_text(encoding="utf-8", errors="replace")

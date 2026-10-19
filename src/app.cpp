@@ -1,4 +1,6 @@
 #include "app.h"
+#include "core/i18n.h"
+#include "ui/translation.h"
 
 #include <QApplication>
 #include <QFileDialog>
@@ -16,6 +18,12 @@ ApplicationController::ApplicationController(const ConfigStore &store, const Tim
       integration_(systemIntegration) {
     QString warning;
     config_ = store_.load(&warning);
+    QString languageError;
+    if (LanguageManager::instance().apply(config_.language, &languageError)) {
+        if (!warning.isEmpty())
+            config_ = store_.load(&warning);
+    } else
+        warning += '\n' + languageError;
     appearance_ = config_;
     timers_.restore(store_.loadRuntime(&warning));
     clock_ = std::make_unique<ClockWindow>(nullptr, [this](const QRect &geometry) {
@@ -28,6 +36,14 @@ ApplicationController::ApplicationController(const ConfigStore &store, const Tim
     const bool hasTray = integration_ && QSystemTrayIcon::isSystemTrayAvailable();
     trayAvailable_ = hasTray;
     panel_ = std::make_unique<ControlPanel>(timers_, hasTray);
+    connect(&LanguageManager::instance(), &LanguageManager::changed, this, [this] {
+        if (reminders_.active())
+            clock_->setReminder(reminders_.title(), reminders_.content());
+        else if (previewing_)
+            clock_->setReminder(
+                I18n::tr("Reminder preview"),
+                I18n::tr("This reminder preview closes automatically after 3 seconds."));
+    });
     connect(panel_.get(), &ControlPanel::settingsRequested, this,
             &ApplicationController::openSettings);
     connect(panel_.get(), &ControlPanel::quitRequested, this, &ApplicationController::quit);
@@ -127,11 +143,18 @@ ApplicationController::~ApplicationController() {
 
 void ApplicationController::buildTray() {
     tray_ = new QSystemTrayIcon(QIcon(":/icons/clock.png"), this);
-    tray_->setToolTip(QStringLiteral("浮动时钟"));
+    bindText(tray_, QT_TRANSLATE_NOOP("FloatingClock", "Floating Clock"), "toolTip");
     menu_ = std::make_unique<QMenu>();
-    menu_->addAction(QStringLiteral("控制面板…"), this, &ApplicationController::showControl);
-    menu_->addAction(QStringLiteral("设置…"), this, &ApplicationController::openSettings);
-    throughAction_ = menu_->addAction(QStringLiteral("鼠标穿透"));
+    auto add = [this](const char *source) {
+        auto *action = menu_->addAction(QString());
+        bindText(action, source);
+        return action;
+    };
+    connect(add(QT_TRANSLATE_NOOP("FloatingClock", "Control panel…")), &QAction::triggered, this,
+            &ApplicationController::showControl);
+    connect(add(QT_TRANSLATE_NOOP("FloatingClock", "Settings…")), &QAction::triggered, this,
+            &ApplicationController::openSettings);
+    throughAction_ = add(QT_TRANSLATE_NOOP("FloatingClock", "Click through"));
     throughAction_->setCheckable(true);
     throughAction_->setChecked(config_.clickThrough);
     connect(throughAction_, &QAction::toggled, this, [this](bool checked) {
@@ -139,14 +162,15 @@ void ApplicationController::buildTray() {
         applyClickThrough();
         saveConfig();
     });
-    moveAction_ = menu_->addAction(QStringLiteral("移动时钟"));
+    moveAction_ = add(QT_TRANSLATE_NOOP("FloatingClock", "Move clock"));
     moveAction_->setCheckable(true);
     connect(moveAction_, &QAction::toggled, this, &ApplicationController::setMoveMode);
-    stopAction_ =
-        menu_->addAction(QStringLiteral("停止提醒"), this, &ApplicationController::stopReminders);
+    stopAction_ = add(QT_TRANSLATE_NOOP("FloatingClock", "Stop reminders"));
+    connect(stopAction_, &QAction::triggered, this, &ApplicationController::stopReminders);
     stopAction_->setEnabled(false);
     menu_->addSeparator();
-    menu_->addAction(QStringLiteral("退出"), this, &ApplicationController::quit);
+    connect(add(QT_TRANSLATE_NOOP("FloatingClock", "Quit")), &QAction::triggered, this,
+            &ApplicationController::quit);
     tray_->setContextMenu(menu_.get());
     connect(tray_, &QSystemTrayIcon::activated, this,
             [this](QSystemTrayIcon::ActivationReason reason) {
@@ -303,8 +327,9 @@ void ApplicationController::openSettings() {
             return;
         preview(cfg);
         previewing_ = true;
-        clock_->setReminder(QStringLiteral("提醒预览"),
-                            QStringLiteral("这是提醒内容预览，3 秒后自动关闭。"));
+        clock_->setReminder(
+            I18n::tr("Reminder preview"),
+            I18n::tr("This reminder preview closes automatically after 3 seconds."));
         applyClickThrough();
         previewTimer_.start();
     });
@@ -321,7 +346,7 @@ void ApplicationController::openSettings() {
         if (updated.autoColor && !config_.autoColor && integration_ &&
             !platform_.requestScreenSampling()) {
             updated.autoColor = false;
-            report(QStringLiteral("未取得屏幕取色权限，继续使用固定颜色。"));
+            report(I18n::tr("Screen sampling permission was not granted. Using a fixed color."));
         }
         QString error;
         if (store_.save(updated, &error)) {
@@ -336,6 +361,9 @@ void ApplicationController::openSettings() {
             report(error);
     }
     settings_ = nullptr;
+    QString languageError;
+    if (!LanguageManager::instance().apply(config_.language, &languageError))
+        report(languageError);
     stopPreview();
     soundPreviewTimer_.stop();
     if (!reminders_.active())
@@ -351,6 +379,9 @@ void ApplicationController::openSettings() {
 }
 
 void ApplicationController::preview(const Config &config) {
+    QString error;
+    if (!LanguageManager::instance().apply(config.language, &error))
+        report(error);
     appearance_ = config;
     appearance_.posX = config_.posX;
     appearance_.posY = config_.posY;
@@ -402,12 +433,12 @@ void ApplicationController::report(const QString &message) {
     lastError_ = message;
     qWarning().noquote() << message;
     if (tray_)
-        tray_->showMessage(QStringLiteral("浮动时钟"), message, QSystemTrayIcon::Warning);
+        tray_->showMessage(I18n::tr("Floating Clock"), message, QSystemTrayIcon::Warning);
 }
 
 void ApplicationController::importConfig() {
-    const auto path = QFileDialog::getOpenFileName(panel_.get(), QStringLiteral("导入旧版配置"),
-                                                   QString(), QStringLiteral("INI 配置 (*.ini)"),
+    const auto path = QFileDialog::getOpenFileName(panel_.get(), I18n::tr("Import legacy settings"),
+                                                   QString(), I18n::tr("INI settings (*.ini)"),
                                                    nullptr, QFileDialog::DontUseNativeDialog);
     if (path.isEmpty())
         return;
@@ -418,6 +449,8 @@ void ApplicationController::importConfig() {
         return;
     }
     config_ = imported;
+    if (!LanguageManager::instance().apply(config_.language, &error))
+        report(error);
     if (integration_ && !platform_.setAutostart(config_.startOnBoot, store_.path(), &error)) {
         config_.startOnBoot = platform_.autostartEnabled();
         report(error);
@@ -431,7 +464,8 @@ void ApplicationController::importConfig() {
     }
     applyClickThrough();
     tick();
-    panel_->showStatus(QStringLiteral("配置已导入；原配置已备份，计时进度保持不变。"));
+    panel_->showStatus(I18n::tr(
+        "Settings imported and the previous file backed up. Timer progress is preserved."));
 }
 
 void ApplicationController::quit() {

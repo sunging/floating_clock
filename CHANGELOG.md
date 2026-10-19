@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0](https://github.com/sunging/floating_clock/compare/v0.1.0...v0.2.0) (2026-10-19)
+
+
+### Features
+
+* add bilingual UI and reorganize general settings ([72661a8](https://github.com/sunging/floating_clock/commit/72661a8fe22e866b8f856b8ee9f751c7abb77232))
+* migrate floating clock to C++ with timers and reminder timeouts ([6c5b21a](https://github.com/sunging/floating_clock/commit/6c5b21a819e5ab824a52ae352b0fda593e869610))
+
+## Changelog
+
 ## Unreleased
 
 ### Features

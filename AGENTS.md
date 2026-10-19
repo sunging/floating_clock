@@ -5,7 +5,9 @@ Python 3.12+ is build tooling only; there is no Python application runtime.
 
 ## Rules
 
-- Keep user-facing text and README in Chinese; comments and docstrings in English.
+- Support English and Simplified Chinese UI text, with English source strings and Qt catalogs.
+  Keep documentation, comments and docstrings in English. Translate built-in UI text, never user data.
+  Language previews must preserve draft edits, timer state and independent reminder deadlines.
 - Use English Conventional Commits. Do not commit, push, tag or publish unless requested.
 - Keep verification records, build logs and local reports in ignored .cache/ storage, never in Git.
   Documentation and code must use portable examples without personal paths, local usernames,
@@ -37,12 +39,14 @@ meson setup build --buildtype=release
 meson compile -C build
 python scripts/test.py build
 python scripts/check_format.py
+python scripts/check_translations.py
 python -m ruff check scripts tests/tooling
 python -m unittest discover -s tests/tooling -v
 ```
 
 For Windows release builds, first run `python scripts/build_static_qt.py`, put its SDK bin directory
 on PATH, set CMAKE_PREFIX_PATH to that SDK, and configure Meson with `-Dstatic_qt=true`.
+Keep the shared SDK bin directory on PATH for lrelease as well as the static SDK's bin directory.
 The shared Qt development build remains available. Never overwrite the existing SDK to change linkage.
 
 Use python scripts/check_format.py --fix for C++ formatting; ruff format scripts tests/tooling for
@@ -53,8 +57,9 @@ Windows sandboxes must allow named pipes for the single-instance test; never ski
 ## Architecture
 
 - src/core: config migration, alarm matching, reminder deadlines, injectable clocks, countdown/stopwatch
-  state and per-config-directory IPC.
+  state, language selection and per-config-directory IPC.
 - src/ui: clock/reminder window, transactional settings and alarm editor, timer/control panel.
+  Translation bindings update widgets in place and must never rebuild or overwrite user-edited values.
 - src/platform: Windows power/registry/sound, Linux DPMS/logind/XDG, macOS AppKit/LaunchAgent support.
 - src/app.cpp: orchestration, transient state, preview cleanup, persistence and restore debounce.
 - tests/cpp: Qt regressions. tests/tooling: artifact publication gate tests.

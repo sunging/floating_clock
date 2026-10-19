@@ -1,25 +1,30 @@
-# 第三方组件
+# Third-party components
 
-Floating Clock 本身采用仓库 `LICENSE` 中的 GNU AGPL-3.0 许可证。图标和内置提示音为本项目制作。
+Floating Clock is licensed under GNU AGPL-3.0; see `LICENSE`. The icon and built-in reminder sound
+were created for this project.
 
-Windows 发行包静态链接 Qt 6.12.0 的 Core、Gui、Widgets、Network、平台/样式插件及 MinGW 运行库。
-静态 Qt Base 采用其 GPL-3.0 许可选项；应用继续采用 AGPL-3.0，构建脚本与对应应用源码随 Release 提供。
-Release 另外提供经过哈希验证的 Qt Base 完整源码。`static-qt-build.json` 记录来源、配置和编译器版本，
-与完整许可文本一同嵌入 Windows EXE，可在控制面板「关于与许可…」中查看、复制或导出；
-可使用仓库中的 `scripts/build_static_qt.py` 重新编译、修改和重新链接。
+Windows releases statically link Qt 6.12.0 Core, Gui, Widgets, Network, platform/style plugins and
+the MinGW runtime. The static Qt Base build uses its GPL-3.0 licensing option. The application
+remains AGPL-3.0, with build scripts and corresponding application source supplied with releases.
+Releases also include the complete, hash-verified corresponding Qt Base source.
 
-Linux/macOS 使用动态 Qt，另外使用 Multimedia；Qt 动态库可由兼容版本替换。
-Windows WAV 播放使用系统 WinMM，无需 Qt Multimedia 或 FFmpeg。
+`static-qt-build.json` records the source, configuration and compiler version. It is embedded in
+the Windows EXE together with license texts and third-party notices. Use About and licenses in
+the control panel to read, copy or export them offline. `scripts/build_static_qt.py` documents the
+build needed to recompile, modify and relink the static SDK.
 
-- Qt：LGPL-3.0 / GPL-3.0 等，具体文件以 Qt 自带许可证和第三方归属说明为准。
-  [Qt 许可说明](https://doc.qt.io/qt-6/licensing.html)、[Qt 6.12.0 对应源码](https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/)。
-- Qt Multimedia 部署工具可能附带 FFmpeg 库；对应配置、许可证与归属说明见
-  [Qt Multimedia 的第三方组件](https://doc.qt.io/qt-6/qtmultimedia-index.html#licenses-and-attributions)。
-- Windows 程序静态链接 MinGW-w64 / GCC 15.1 运行库。GCC 库采用 GPL 及 GCC Runtime Library Exception；
-  MinGW-w64 的文件另有各自许可证。[GCC 运行库例外](https://www.gnu.org/licenses/gcc-exception-3.1.html)、
-  [MinGW-w64 源码](https://www.mingw-w64.org/downloads/)。
+Linux/macOS dynamically link Qt and also use Qt Multimedia. Compatible Qt shared libraries can
+be substituted. Windows WAV playback uses WinMM and does not require Qt Multimedia or FFmpeg.
 
-Windows EXE 内嵌应用、Qt 第三方归属说明与 MinGW-w64、GCC、winpthreads 运行库的许可证原文。
-Linux/macOS 打包脚本将许可证、归属说明与 SDK 提供的二进制 SPDX JSON 清单复制到发行包的 `licenses` 目录；
-不附带同一清单的重复格式及完整 SDK 源文件清单。
-构建、测试、签名工具仅用于构建，不是应用的 Python 运行依赖。
+- Qt uses LGPL-3.0, GPL-3.0 and other terms depending on the component. The supplied Qt licenses and attribution files identify the applicable terms. See [Qt licensing](https://doc.qt.io/qt-6/licensing.html) and the [Qt 6.12.0 source archives](https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/).
+- Qt Multimedia deployment may include FFmpeg. See the configuration, licenses and attribution notices in [Qt Multimedia third-party components](https://doc.qt.io/qt-6/qtmultimedia-index.html#licenses-and-attributions).
+- Windows statically links the MinGW-w64/GCC 15.1 runtime. GCC libraries use the GPL with the GCC Runtime Library Exception; MinGW-w64 files have their own terms. See the [GCC Runtime Library Exception](https://www.gnu.org/licenses/gcc-exception-3.1.html) and [MinGW-w64 source](https://www.mingw-w64.org/downloads/).
+
+The Windows EXE embeds application and Qt attribution notices plus the original MinGW-w64, GCC
+and winpthreads runtime license texts. Linux/macOS packaging copies licenses, attribution notices
+and binary SPDX JSON inventories from the SDK into the package's `licenses` directory, excluding
+duplicate inventory formats and complete SDK source-file inventories.
+
+Build, test and signing tools are used only during development and distribution. They are not
+Python runtime dependencies of the application. Translation catalog text is user-interface data;
+the unmodified Qt Chinese catalog retains its original copyright and license terms.

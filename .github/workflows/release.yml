@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '重试已有草稿版本，例如 v0.2.0'
+        description: 'Retry an existing draft release, for example v0.2.0'
         type: string
         required: true
 
